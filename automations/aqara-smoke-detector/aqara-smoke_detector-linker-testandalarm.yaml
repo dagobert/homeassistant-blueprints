@@ -1,134 +1,105 @@
 blueprint:
-  name: "Aqara Smoke Detector linkage for global alarm and test"
-  source_url: https://t.t
+  name: "Aqara Smoke Detector linkage (Test and Alarm)"
+  source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector/aqara-smoke_detector-linker-testandalarm.yaml
   author: "CV"
   domain: automation
-  description: "
+  homeassistant:
+    min_version: 2024.10.0
+  description: |
     # Aqara Smoke Detector linkage for global alarm and test
     
-    **🔺 This automation is not resposible a safety feature. It con only
-    support your efford to improve your alarm system. Be advised that this automation
-    does not promise to work flawlessly but will try to. Using this automation is on
-    your own risk.**
+    **🔺 This automation is not resposible a safety feature. It con only support your efford to improve your alarm system. Be advised that this automation does not promise to work flawlessly but will try to. Using this automation is on your own risk.**
     
     **If the hub or the your automation system is down the linkage will not work. 🔺**
 
-    \n---\n  
+    ---  
 
-    **Version:** 2025-02-19\n
-    **Source Code:** [github.com]() | **Tickets:** [Issues]()\n
+    **Version:** 2025-02-19
+    **Source Code:** [github.com](https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector/CHANGELOG.md) | **Tickets:** [Issues](https://github.com/dagobert/homeassistant-blueprints/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22Aqara%20smoke%20detector%22)
 
-    For anyone who wants to get updated on changes subscribe to this [GitHub Issue]()
-    since as of now Home Assistant has no update facitities for blueprints.
+    For anyone who wants to get updated on changes subscribe to this [GitHub Issue](https://github.com/dagobert/homeassistant-blueprints/issues/1) since as of now Home Assistant has no update facitities for blueprints.
 
-    \n---\n
+    ---
     
-
     ## Introduction
 
-    This blueprint automation allows you to link the Aqara Smoke Detector JY-GZ-01AQ
-    because it does not link itself to eachother directly even the official documents 
-    might lead you to this conclusion. Linking is either done by the Aqara hub or has
-    to be implemented in your home automation system.\n
+    This blueprint automation allows you to link the Aqara Smoke Detector JY-GZ-01AQ because it does not link itself to eachother directly even the official documents might lead you to this conclusion. Linking is either done by the Aqara hub or has to be implemented in your home automation system.
 
-    This blueprint is inspired by the following blueprint creations. Thanks to these 
-    developers. [ciB](https://community.home-assistant.io/t/aqara-smoke-detector-linkage-alarm/517656), [vansummeren](https://community.home-assistant.io/t/aqara-smoke-detector-linkage-alarm-plus-optional-actions/750785)
+    This blueprint is inspired by the following blueprint creations. Thanks to these developers. [ciB](https://community.home-assistant.io/t/aqara-smoke-detector-linkage-alarm/517656), [vansummeren](https://community.home-assistant.io/t/aqara-smoke-detector-linkage-alarm-plus-optional-actions/750785)
 
-
-    <details><summary><strong>Features</strong></summary>
-
-    ✅ Self-Test walk-through of all detectors using notifications\n\n
-    ✅ Smoke-Alarm / Fake fire alarm test\n\n
-    ✅ Smoke-Alarm pre-notification for false alarm prevention\n\n
-    ✅ Mute alarm\n\n
-    ✅ Persistent Fire-Alarm notification\n\n
-    ✅ Text-to-Speech notification for Android (iOS not tested)\n\n
+    <details>
+    <summary><strong>Features</strong></summary>
+    
+    ✅ Self-Test walk-through of all detectors using notifications
+    ✅ Smoke-Alarm / Fake fire alarm test
+    ✅ Smoke-Alarm pre-notification for false alarm prevention
+    ✅ Mute alarm
+    ✅ Persistent Fire-Alarm notification
+    ✅ Text-to-Speech notification for Android (iOS not tested)
     ✅ Customizable notifications
-    </details>
-    <details><summary><strong>Roadmap</strong></summary>
 
-    #️⃣ Add Actions on First-Alarm\n
-    #️⃣ Add Actions on Real-Fire-Alarm\n
-    #️⃣ Customization of TTS\n
-    #️⃣ Test and notify on selftest when smoke detectors do not have linkage_alarm
-    enabled.\n
-    #️⃣ Show all detectors that sound alarm on smoke detected\n
-    #️⃣ Move the tiggered_alarm notification to after the selftest stuff (yes/No?)\n
+    </details>
+
+    <details>
+    <summary><strong>Roadmap</strong></summary>
+
+    #️⃣ Add Actions on First-Alarm
+    #️⃣ Add Actions on Real-Fire-Alarm
+    #️⃣ Customization of TTS
+    #️⃣ Test and notify on selftest when smoke detectors do not have linkage_alarm enabled.
+    #️⃣ Show all detectors that sound alarm on smoke detected
+    #️⃣ Move the tiggered_alarm notification to after the selftest stuff (yes/No?)
 
     Please let me know if you find any issues or have suggestions to improve this blueprint.
+    
     </details>
-    <details><summary><strong>Device self-tests</strong></summary>
 
-    To test your smoke alarm devices you can conduct a self-test by using either the
-    hardware button on a device or use the software self-test button. When using the 
-    hardware button you need to hold it for at least 3 seconds and continue a few more
-    after the test started. The hardware button is not relyable probably because of
-    the deep sleep capability of the device.\n
+    <details>
+    <summary><strong>Device self-tests</strong></summary>
 
-    During this self-test you will receive mobile notifications that ask you to 
-    continue the self-test of ever associate smoke detector one-by-one. You will
-    have time in between to advanve to the next detector. The assigned area will
-    be shown in the notification.\n
+    To test your smoke alarm devices you can conduct a self-test by using either the hardware button on a device or use the software self-test button. When using the hardware button you need to hold it for at least 3 seconds and continue a few more after the test started. The hardware button is not relyable probably because of
+    the deep sleep capability of the device.
 
-    <strong>🔆</strong> When selecting the smoke detectors here in the automation you 
-    should order them in a way that makes it easy for you to go from one to the next
-    efficiantly.\n
+    During this self-test you will receive mobile notifications that ask you to continue the self-test of ever associate smoke detector one-by-one. You will have time in between to advanve to the next detector. The assigned area will be shown in the notification.
+
+    <strong>🔆</strong> When selecting the smoke detectors here in the automation you should order them in a way that makes it easy for you to go from one to the next efficiantly.
+
     </details>
-    <details><summary><strong>Fake fire alarm test</strong></summary>
+    
+    <details>
+    <summary><strong>Fake fire alarm test</strong></summary>
 
-    This automation implements a fake fire alarm test. You can disable this test
-    in the settings if you do not want to use this feature instead using special
-    testing gas.
+    This automation implements a fake fire alarm test. You can disable this test in the settings if you do not want to use this feature instead using special testing gas.
 
-    After the self-test you will be asked to conduct a \"real\" fire alarm test. This 
-    alarm uses the same sequence as if a smoke detector triggers this automation by
-    detecting smoke. This is a special feature of this blueprint since using using
-    seperate sequences would not serve the purpose at all.
+    After the self-test you will be asked to conduct a "real" fire alarm test. This alarm uses the same sequence as if a smoke detector triggers this automation by detecting smoke. This is a special feature of this blueprint since using using seperate sequences would not serve the purpose at all.
 
-    To avoid confusion you should definetly prepare everyone in your household that
-    you are about to do this test. For recipients of smoke alarm messages these
-    will have a forced prefix and suffix <code>!TEST!</code> in the title.\n\n
+    To avoid confusion you should definetly prepare everyone in your household that you are about to do this test. For recipients of smoke alarm messages these will have a forced prefix and suffix <code>!TEST!</code> in the title.
+
     </details>
-    <details><summary><strong>Latest Changes</strong></summary>\n
+    
+    <details>
+    <summary><strong>Latest Changes</strong></summary>
 
-    <strong>Full Changelog:</strong> [CHANGELOG.md]()\n
+    <strong>Full Changelog:</strong> [CHANGELOG.md](https://github.com/dagobert/homeassistant-blueprints/blob/master/automations/aqara-smoke-detector/CHANGELOG.md)
 
     Initial Release: 2025-02-19
-    \n
+    
     </details>
-
 
     ## 🔺 Important 🔺
 
-    The following notes are limitation of the device or the protocol and not of the
-    automation!\n
+    The following notes are limitation of the device or the protocol and not of the automation!
 
-    <strong>
-    The Aqara smoke detector is a zigbee battery device and therefor in deep sleep 
-    mode most of the time. Hence, status updates and actions might not change
-    immediately. It might even take a long time before an alarm or mute command is
-    executed.</strong>\n
+    <strong>The Aqara smoke detector is a zigbee battery device and therefor in deep sleep mode most of the time. Hence, status updates and actions might not change immediately. It might even take a long time before an alarm or mute command is executed.</strong>
 
-    <strong>Also, if you send an alarm command and later a mute before the device reacted to
-    the alarm command, the mute command will most likely be ignored. You need to send 
-    a new mute command.</strong>\n
+    <strong>Also, if you send an alarm command and later a mute before the device reacted to the alarm command, the mute command will most likely be ignored. You need to send a new mute command.</strong>
     
-    <strong>There are mentions that a regular change of the hearbeat indicator switch is 
-    keeping the deviceawake to react promptly. This is not yet tested by me. I will
-    keep you posted on my findings.
-    </strong>\n
+    <strong>There are mentions that a regular change of the hearbeat indicator switch is keeping the deviceawake to react promptly. This is not yet tested by me. I will keep you posted on my findings.</strong>
 
-    1. You need to activate <code>linkage_alarm</code> to make the automation work!\n
-    2. If you want the areas to show on the notification you need to assign the smoke
-    detectors to an area.\n
-    3. If you use the hardware self-test button you need to push it a few seconds 
-    longer after you already hear the test sounds. Otherwise it might not send its
-    status to Home Assistant.\n
-    4. If you use the hardware Self-Test button on the device the automation might not 
-    run the first time. This is probably due to the deep sleep mode of the device. If 
-    you do not receive a notification on a correctly setup system just try it again 
-    after a short wait."
-
+    1. You need to activate <code>linkage_alarm</code> to make the automation work!
+    2. If you want the areas to show on the notification you need to assign the smoke detectors to an area.
+    3. If you use the hardware self-test button you need to push it a few seconds longer after you already hear the test sounds. Otherwise it might not send its status to Home Assistant.
+    4. If you use the hardware Self-Test button on the device the automation might not run the first time. This is probably due to the deep sleep mode of the device. If you do not receive a notification on a correctly setup system just try it again after a short wait.
 
   input:
     smoke_detector_devices:
@@ -169,20 +140,17 @@ blueprint:
 
     firstalarm__activated:
       name: "Use First-Alarm feature"
-      description: >
+      description: |
         You deactivate the First-Alarm feature here.
 
-        The **First-Alarm feature** allows you to receive a notification of
-        the first smoke detection that triggered the automation. It includes the 
-        area where it was detected. You can confirm the detection or prevent 
-        turning on the alarm of all other smoke detectors.
+        <details><summary>CLICK HERE for more information</summary>
 
-        A timeout is configurable for this notification after which the alarm 
-        **will** be propagated unless you have chosen an action on the notification.
+        The **First-Alarm feature** allows you to receive a notification of the first smoke detection that triggered the automation. It includes the area where it was detected. You can confirm the detection or prevent turning on the alarm of all other smoke detectors.
 
+        A timeout is configurable for this notification after which the alarm **will** be propagated unless you have chosen an action on the notification.
+        </details>
 
-        **Caution: This option will delay the premise-wide alarm and thereby cause 
-        endangerment or the live of others! It is advised NOT to use this feature!**
+        🔺 **This option will delay the premise-wide alarm and thereby cause endangerment or the live of others! It is advised NOT to use this feature!** 🔺
       default: true
       selector:
         boolean:
@@ -191,14 +159,6 @@ blueprint:
       name: "Smoke Alarm Options: First Alarm Detected"
       description: >
         All settings concerning the first detection of a smoke alarms.
-
-
-        **First smoke alarm notification** allows you to receive a notification of
-        the smoke detection including the area where it was detected. You can confirm
-        the detection or prevent turning on the alarm of all other smoke detectors.
-        You need to setup a timeout for this notification to receive it. If you set
-        the timeout to "0" or the timeout ends, the automation *WILL* turn on the 
-        alarm of all other smoke detectors!
       icon: mdi:fire
       input:
         firstalarm__notify_title:
@@ -238,16 +198,12 @@ blueprint:
             text:
         firstalarm__waittimeout_seconds:
           name: "First smoke alarm notification: Timeout (seconds)"
-          description: >
-            The amount of second you have to decide wether or not there is really
-            fire before the alarm is propagated to all other detectors.
+          description: |
+            The amount of second you have to decide wether or not there is really fire before the alarm is propagated to all other detectors.
+            <code>Maximum: 300 seconds</code>
 
-            Maximum: 300 seconds
+            🔺 **Setting a timeout too high or at all will cost precious time to alert everyone on premise raises the likelyhood of death! It is strongly recommended not to use this option!** 🔺
 
-
-            **Caution: Setting a timeout too high or at all will cost precious
-            time to alert everyone on premise raises the likelyhood of death! It is
-            strongly recommended not to use this option!**
           default: 15
           selector:
             number:
@@ -301,7 +257,7 @@ blueprint:
           selector:
             text:
         allalarm__notify_button_mutealarm:
-          name: "All alarm notification: Mutton \"*Mute*\""
+          name: "All alarm notification: Button \"*Mute*\""
           description: >
             Pushing this button will mute the alarm and delete the persistent 
             notification.
@@ -319,6 +275,7 @@ blueprint:
       name: "Use Self-Test feature"
       description: >
         You deactivate the Self-Test feature here.
+
 
         The self-test allows you to conduct a guided self-test of the smoke 
         detectors.
@@ -415,12 +372,16 @@ blueprint:
 
     smoketest__activated:
       name: "Use Smoke-Alarm-Test feature"
-      description: >
+      description: |
         You deactivate the Smoke-Alarm-Test feature here.
 
+        <details><summary>CLICK HERE for more information</summary>
+        
         For the Smoke-Alarm-Test you need to aktivate the self-test on one smoke
         detector either by hardware (pugh button for 4 seconds) or by software.
         You can have the Self-Test feature of this automation turned off.
+        </details>
+
       default: true
       selector:
         boolean:

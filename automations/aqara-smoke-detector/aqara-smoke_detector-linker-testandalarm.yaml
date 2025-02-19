@@ -1,5 +1,5 @@
 blueprint:
-  name: "Aqara Smoke Detector linkage for global alarm and test"
+  name: "Aqara Smoke Detector linkage (Test and Alarm)"
   source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector/aqara-smoke_detector-linker-testandalarm.yaml
   author: "CV"
   domain: automation

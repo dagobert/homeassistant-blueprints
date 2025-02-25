@@ -37,14 +37,15 @@ blueprint:
     ✅ Persistent Fire-Alarm notification
     ✅ Text-to-Speech notification for Android (iOS not tested)
     ✅ Customizable notifications
+    ✅ Actions on alarm
 
     </details>
 
     <details>
     <summary><strong>Roadmap</strong></summary>
 
-    #️⃣ Add Actions on First-Alarm
-    #️⃣ Add Actions on Real-Fire-Alarm
+    #️⃣ <s>Add Actions on First-Alarm</s>
+    #️⃣ <s>Add Actions on Real-Fire-Alarm</s>
     #️⃣ Customization of TTS
     #️⃣ Test and notify on selftest when smoke detectors do not have linkage_alarm enabled.
     #️⃣ Show all detectors that sound alarm on smoke detected
@@ -217,6 +218,14 @@ blueprint:
               max: 300
               unit_of_measurement: "seconds"
               mode: box
+        firstalarm__action:
+          name: "Action executed on first smoke detected"
+          description: |
+            These actions run when the first smoke alarm was detected and this feature is enabled. It runs before the notification is sent.
+          default: []
+          selector:
+            action: {}
+            
 
 ###############################################################################
 #
@@ -270,6 +279,13 @@ blueprint:
           default: "Mute Alarm"
           selector:
             text:
+        allalarm__action:
+          name: "Action executed on smoke alarm detected"
+          description: |
+            These actions run when smoke alarm was detected. It runs after starting alarm but before the notification is sent.
+          default: []
+          selector:
+            action: {}
 
 ###############################################################################
 #
@@ -488,12 +504,14 @@ variables:
   input_firstalarm__notify_button_fire: !input 'firstalarm__notify_button_fire'
   input_firstalarm__notify_button_nofire: !input 'firstalarm__notify_button_nofire'
   input_firstalarm__waittimeout_seconds: !input 'firstalarm__waittimeout_seconds'
+  input_firstalarm__action: !input 'firstalarm__action'
 
   # Real-Fire
   input_allalarm__notify_title: !input 'allalarm__notify_title'
   input_allalarm__notify_message: !input 'allalarm__notify_message'
   input_allalarm__notify_button_deletenotification: !input 'allalarm__notify_button_deletenotification'
   input_allalarm__notify_button_mutealarm: !input 'allalarm__notify_button_mutealarm'
+  input_allalarm__action: !input 'allalarm__action'
   # Real-Fire Messages on smoketest
   prepared_allalarm_notify_title: >-
     {% if trigger.id == 'triggered_test' %}
@@ -596,6 +614,9 @@ actions:
           if: 
             - "{{ input_firstalarm__activated }}"
           then:
+            - alias: "First execute firstalarm_action"
+              choose: []
+              default: !input 'firstalarm__action'
             - alias: "Set variables firstalarm notification"
               variables:
                 action_fire_confirmation: "{{ 'FIRE_CONFIRMATION_' ~ context.id }}"
@@ -861,6 +882,10 @@ actions:
       option: alarm
     target:
       entity_id: "{{ buzzers_set_manual_alarm }}"
+
+  - alias: "First execute allalarm_action"
+    choose: []
+    default: !input 'allalarm__action'
 
   - alias: "Set variables for real fire notification"
     variables:

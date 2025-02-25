@@ -1,6 +1,6 @@
 blueprint:
-  name: "Aqara Smoke Detector linkage (Test and Alarm)"
-  source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector/aqara-smoke_detector-linker-testandalarm.yaml
+  name: "Aqara Smoke Detector linker for test and alarm"
+  source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-linker/aqara-smoke_detector-linker-testandalarm.yaml
   author: "CV"
   domain: automation
   homeassistant:
@@ -15,7 +15,7 @@ blueprint:
     ---  
 
     **Version:** 2025-02-19
-    **Source Code:** [github.com](https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector/CHANGELOG.md) | **Tickets:** [Issues](https://github.com/dagobert/homeassistant-blueprints/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22Aqara%20smoke%20detector%22)
+    **Source Code:** [github.com](https://github.com/dagobert/homeassistant-blueprints/tree/stable/automations/aqara-smoke-detector-linker) | **Tickets:** [Issues](https://github.com/dagobert/homeassistant-blueprints/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22Aqara%20smoke%20detector%22)
 
     For anyone who wants to get updated on changes subscribe to this [GitHub Issue](https://github.com/dagobert/homeassistant-blueprints/issues/1) since as of now Home Assistant has no update facitities for blueprints.
 
@@ -80,7 +80,7 @@ blueprint:
     <details>
     <summary><strong>Latest Changes</strong></summary>
 
-    <strong>Full Changelog:</strong> [CHANGELOG.md](https://github.com/dagobert/homeassistant-blueprints/blob/master/automations/aqara-smoke-detector/CHANGELOG.md)
+    <strong>Full Changelog:</strong> [CHANGELOG.md](https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-linker/CHANGELOG.md)
 
     Initial Release: 2025-02-19
     
@@ -110,8 +110,14 @@ blueprint:
         #       variations of model names
         device:
           filter:
-          - manufacturer: Aqara
-            model: Smart smoke detector
+            - manufacturer: Aqara
+              model: Smart smoke detector
+            - manufacturer: Aqara
+              model: Smart smoke detector (JY-GZ-01AQ)
+            - manufacturer: Aqara
+              model: (JY-GZ-01AQ)
+            - manufacturer: Aqara
+              model: JY-GZ-01AQ
           multiple: true
     alarm__notify_devices:
       name: Mobile device to notify on smoke alarms

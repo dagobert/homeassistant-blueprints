@@ -1,5 +1,5 @@
 blueprint:
-  name: "Aqara Smoke Detector linker for test and alarm"
+  name: "Aqara Smoke Detector Linker for Test and Alarm"
   source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-linker/aqara-smoke_detector-linker-testandalarm.yaml
   author: "CV"
   domain: automation
@@ -112,13 +112,17 @@ blueprint:
         #       variations of model names
         device:
           filter:
-            - manufacturer: Aqara
+            - integration: mqtt
+              manufacturer: Aqara
               model: Smart smoke detector
-            - manufacturer: Aqara
+            - integration: mqtt
+              manufacturer: Aqara
               model: Smart smoke detector (JY-GZ-01AQ)
-            - manufacturer: Aqara
+            - integration: mqtt
+              manufacturer: Aqara
               model: (JY-GZ-01AQ)
-            - manufacturer: Aqara
+            - integration: mqtt
+              manufacturer: Aqara
               model: JY-GZ-01AQ
           multiple: true
     alarm__notify_devices:

@@ -16,6 +16,8 @@
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-linker/aqara-smoke_detector-linker-testandalarm.yaml)
 
+🔺 It is recommended to use the [Aqara Smoke Detector Keep-alive](https://github.com/dagobert/homeassistant-blueprints/tree/stable/automations/aqara-smoke-detector-keepalive) blueprint additionally. 🔺
+
 ## Introduction
 
 This blueprint automation allows you to link the Aqara Smoke Detector JY-GZ-01AQ because it does not link itself to eachother directly even the official documents might lead you to this conclusion. Linking is either done by the Aqara hub or has to be implemented in your home automation system.

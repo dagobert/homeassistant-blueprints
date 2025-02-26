@@ -38,6 +38,7 @@ blueprint:
     ✅ Text-to-Speech notification for Android (iOS not tested)
     ✅ Customizable notifications
     ✅ Actions on alarm
+    ✅ Wakeup detectors on test and alarm
 
     </details>
 
@@ -466,6 +467,8 @@ blueprint:
               unit_of_measurement: "minutes"
               mode: slider
 
+mode: single
+
 trigger_variables:
   input_smoke_detector_devices: !input 'smoke_detector_devices'
   smoke_sensors: >-
@@ -557,6 +560,14 @@ variables:
     {% endfor -%}
     {{ data.buzzers }}
 
+  detectors__heartbeat_switch: >-
+    {% set data = namespace(heartbeat_entities=[]) %}
+    {% for device in input_smoke_detector_devices %}
+      {% set heartbeat_entity = device_entities(device) | select('match', 'switch.*_heartbeat_indicator$') | list %}
+      {% set data.heartbeat_entities = data.heartbeat_entities + heartbeat_entity %}
+    {% endfor %}
+    {{ data.heartbeat_entities }}
+
   sensors_smoke_detected: >-
     {{ expand(smoke_sensors) | selectattr('state', 'equalto', 'on') | map(attribute='entity_id') | list }}
   sensors_test_detected: >-
@@ -588,8 +599,27 @@ condition:
 
 actions:
 
+  - alias: "Parallel Wakeup Devices using heartbeat switch"
+    parallel:
+      - sequence:
+          # TODO: Make this configurable?
+          # Wakeup detectors START
+          - alias: "Toggle hearbeat switch"
+            action: switch.toggle
+            target:
+              entity_id: "{{ detectors__heartbeat_switch }}"
+          - alias: "Forced delay"
+            delay:
+              seconds: 15
+          - alias: "Toggle switch"
+            action: switch.toggle
+            target:
+              entity_id: "{{ detectors__heartbeat_switch }}"
+          # Wakeup detectors END
+
 #### Level 1: CHOOSE START
-  - choose:
+      - sequence:
+          - choose:
 
 ###############################################################################
 #
@@ -601,88 +631,88 @@ actions:
 #   - On "stop" alarms on ALL smoke detectors will be muted
 #
 ###############################################################################
-    - alias: "Trigger choice triggered_alarm"
-      conditions:
-        - condition: trigger
-          id: "triggered_alarm"
-      sequence:
+            - alias: "Trigger choice triggered_alarm"
+              conditions:
+                - condition: trigger
+                  id: "triggered_alarm"
+              sequence:
 
 #############################
 ## First-Alarm Sequence
 #############################
-        - alias: "If input_firstalarm__activated -> notify firstalarm"
-          if: 
-            - "{{ input_firstalarm__activated }}"
-          then:
-            - alias: "First execute firstalarm_action"
-              choose: []
-              default: !input 'firstalarm__action'
-            - alias: "Set variables firstalarm notification"
-              variables:
-                action_fire_confirmation: "{{ 'FIRE_CONFIRMATION_' ~ context.id }}"
-                action_fire_nofire: "{{ 'FIRE_NOFIRE_' ~ context.id }}"
-            - alias: "Repeat: Notify all devices for smoke alarm"
-              repeat:
-                for_each: "{{ input_alarm__notify_devices }}"
-                sequence:  
-                  - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
-                    data:
-                      title: "{{ input_firstalarm__notify_title }}"
-                      message: >
-                        {{ input_firstalarm__notify_message }}
+                - alias: "If input_firstalarm__activated -> notify firstalarm"
+                  if: 
+                    - "{{ input_firstalarm__activated }}"
+                  then:
+                    - alias: "First execute firstalarm_action"
+                      choose: []
+                      default: !input 'firstalarm__action'
+                    - alias: "Set variables firstalarm notification"
+                      variables:
+                        action_fire_confirmation: "{{ 'FIRE_CONFIRMATION_' ~ context.id }}"
+                        action_fire_nofire: "{{ 'FIRE_NOFIRE_' ~ context.id }}"
+                    - alias: "Repeat: Notify all devices for smoke alarm"
+                      repeat:
+                        for_each: "{{ input_alarm__notify_devices }}"
+                        sequence:  
+                          - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
+                            data:
+                              title: "{{ input_firstalarm__notify_title }}"
+                              message: >
+                                {{ input_firstalarm__notify_message }}
 
-                        Area(s): {{ sensors_smoke_detected | map('area_name') | list | join(', ') }}
-                      data:
-                        # Show timer and make notification disappear.
-                        timeout: "{{ input_firstalarm__waittimeout_seconds }}"
-                        chronometer: true
-                        when: "{{ input_firstalarm__waittimeout_seconds }}"
-                        when_relative: true
-                        # Notification icon settings
-                        color: "red" # or "red"
-                        #notification_icon: "mdi:cellphone"
-                        channel: "Alarm"
-                        importance: max
-                        # keep even touched
-                        #sticky: true
-                        # cannot swipe away
-                        #persistent: true
-                        tag: "smoke-detector-alarm"
-                        actions:
-                          - action: "{{ action_fire_confirmation }}"
-                            title: "{{ input_firstalarm__notify_button_fire }}"
-                          - action: "{{ action_fire_nofire }}"
-                            title: "{{ input_firstalarm__notify_button_nofire }}"
-            ### END Repeat
-            - alias: "Wait for a response to firstalarm notification or timeout"
-              wait_for_trigger:
-                - platform: event
-                  event_type: mobile_app_notification_action
-                  event_data:
-                    action: "{{ action_fire_confirmation }}"
-                - platform: event
-                  event_type: mobile_app_notification_action
-                  event_data:
-                    action: "{{ action_fire_nofire }}"
-              timeout:
-                seconds: "{{ input_firstalarm__waittimeout_seconds }}"
-            - alias: "Respose NO FIRE: mute all buzzers and terminate automation"
-              if: "{{ wait.trigger.event.data.action == action_fire_nofire }}"
-              then:
-                # We cannot just mute the one buzzer due to blueprint validation on 
-                # save. Also, there might be more than one buzzer sounding.
-                - action: select.select_option
-                  data:
-                    option: mute
-                  target:
-                    entity_id: "{{ buzzers_all }}"
-                - alias: "Delay out of caution"
-                  delay:
-                    seconds: 1
-                - alias: "STOP: END AUTOMATION IMMEDIATELY"
-                  stop: "User declared NO FIRE"
-        ### END If
-    ### END Choose option triggered_alarm
+                                Area(s): {{ sensors_smoke_detected | map('area_name') | list | join(', ') }}
+                              data:
+                                # Show timer and make notification disappear.
+                                timeout: "{{ input_firstalarm__waittimeout_seconds }}"
+                                chronometer: true
+                                when: "{{ input_firstalarm__waittimeout_seconds }}"
+                                when_relative: true
+                                # Notification icon settings
+                                color: "red" # or "red"
+                                #notification_icon: "mdi:cellphone"
+                                channel: "Alarm"
+                                importance: max
+                                # keep even touched
+                                #sticky: true
+                                # cannot swipe away
+                                #persistent: true
+                                tag: "smoke-detector-alarm"
+                                actions:
+                                  - action: "{{ action_fire_confirmation }}"
+                                    title: "{{ input_firstalarm__notify_button_fire }}"
+                                  - action: "{{ action_fire_nofire }}"
+                                    title: "{{ input_firstalarm__notify_button_nofire }}"
+                    ### END Repeat
+                    - alias: "Wait for a response to firstalarm notification or timeout"
+                      wait_for_trigger:
+                        - platform: event
+                          event_type: mobile_app_notification_action
+                          event_data:
+                            action: "{{ action_fire_confirmation }}"
+                        - platform: event
+                          event_type: mobile_app_notification_action
+                          event_data:
+                            action: "{{ action_fire_nofire }}"
+                      timeout:
+                        seconds: "{{ input_firstalarm__waittimeout_seconds }}"
+                    - alias: "Respose NO FIRE: mute all buzzers and terminate automation"
+                      if: "{{ wait.trigger.event.data.action == action_fire_nofire }}"
+                      then:
+                        # We cannot just mute the one buzzer due to blueprint validation on 
+                        # save. Also, there might be more than one buzzer sounding.
+                        - action: select.select_option
+                          data:
+                            option: mute
+                          target:
+                            entity_id: "{{ buzzers_all }}"
+                        - alias: "Delay out of caution"
+                          delay:
+                            seconds: 1
+                        - alias: "STOP: END AUTOMATION IMMEDIATELY"
+                          stop: "User declared NO FIRE"
+                ### END If
+            ### END Choose option triggered_alarm
 
 ###############################################################################
 #
@@ -694,181 +724,181 @@ actions:
 #   - On "stop" alarms on ALL smoke detectors will be muted
 #
 ###############################################################################
-    - alias: "Trigger choice triggered_test"
-      conditions:
-        - condition: trigger
-          id: "triggered_test"
-      sequence:
+            - alias: "Trigger choice triggered_test"
+              conditions:
+                - condition: trigger
+                  id: "triggered_test"
+              sequence:
 
 #############################
 ## Self-Test Sequence
 #############################
-        - alias: "IF: input_selftest__activated -> self-test sequence"
-          if: "{{ input_selftest__activated }}"
-          then:
-            - alias: "Repeat: test all smoke detectors"
-              repeat:
-                for_each: "{{ sensors_test_settestalarmto }}"
-                sequence:
-                  - alias: "Set variables for self-test notification"
-                    variables:
-                      action_selftest_now: "{{ 'SELFTEST_NOW_' ~ context.id }}"
-                      action_selftest_skip: "{{ 'SELFTEST_SKIP_' ~ context.id }}"
-                      action_selftest_stop: "{{ 'SELFSTEST_STOP_' ~ context.id }}"
-                  - alias: "Notify self-test recipient"
-                    action: notify.mobile_app_{{ device_attr(input_test__notify_device, 'name') | slugify }}
-                    data:
-                      title: "{{ input_selftest__notify_title }}"
-                      message: >
-                        {{ input_selftest__notify_message }}
-                        
-                        Area: {{ area_name(repeat.item) }}
-                      data:
-                        timeout: "{{ input_selftest__waittimeout_minutes | multiply(60) | int(0) }}"
-                        chronometer: true
-                        when: "{{ input_selftest__waittimeout_minutes | multiply(60) | int(0) }}"
-                        when_relative: true
-                        channel: "Tests"
-                        importance: high
-                        tag: "smoke-detector-selftest"
-                        actions:
-                          - action: "{{ action_selftest_now }}"
-                            title: "{{ input_selftest__notify_button_testnow}}"
-                          - action: "{{ action_selftest_skip }}"
-                            title: "{{ input_selftest__notify_button_skip }}"
-                          - action: "{{ action_selftest_stop }}"
-                            title: "{{ input_selftest__notify_button_stoptesting }}"
-                  - alias: "Wait for a response of self-test notification"
-                    wait_for_trigger:
-                      - platform: event
-                        event_type: mobile_app_notification_action
-                        event_data:
-                          action: "{{ action_selftest_now }}"
-                      - platform: event
-                        event_type: mobile_app_notification_action
-                        event_data:
-                          action: "{{ action_selftest_skip }}"
-                      - platform: event
-                        event_type: mobile_app_notification_action
-                        event_data:
-                          action: "{{ action_selftest_stop }}"
-                    timeout:
-                      hours: 0
-                      minutes: "{{ input_selftest__waittimeout_minutes }}"
-                      seconds: 0
-                  - alias: "Delete notification smoke-detector-selftest"
-                    action: notify.mobile_app_{{ device_attr(input_test__notify_device, 'name') | slugify }}
-                    data:
-                      message: "clear_notification"
-                      data:
-                        tag: "smoke-detector-selftest"
+                - alias: "IF: input_selftest__activated -> self-test sequence"
+                  if: "{{ input_selftest__activated }}"
+                  then:            
+                    - alias: "Repeat: test all smoke detectors"
+                      repeat:
+                        for_each: "{{ sensors_test_settestalarmto }}"
+                        sequence:
+                          - alias: "Set variables for self-test notification"
+                            variables:
+                              action_selftest_now: "{{ 'SELFTEST_NOW_' ~ context.id }}"
+                              action_selftest_skip: "{{ 'SELFTEST_SKIP_' ~ context.id }}"
+                              action_selftest_stop: "{{ 'SELFSTEST_STOP_' ~ context.id }}"
+                          - alias: "Notify self-test recipient"
+                            action: notify.mobile_app_{{ device_attr(input_test__notify_device, 'name') | slugify }}
+                            data:
+                              title: "{{ input_selftest__notify_title }}"
+                              message: >
+                                {{ input_selftest__notify_message }}
+                                
+                                Area: {{ area_name(repeat.item) }}
+                              data:
+                                timeout: "{{ input_selftest__waittimeout_minutes | multiply(60) | int(0) }}"
+                                chronometer: true
+                                when: "{{ input_selftest__waittimeout_minutes | multiply(60) | int(0) }}"
+                                when_relative: true
+                                channel: "Tests"
+                                importance: high
+                                tag: "smoke-detector-selftest"
+                                actions:
+                                  - action: "{{ action_selftest_now }}"
+                                    title: "{{ input_selftest__notify_button_testnow}}"
+                                  - action: "{{ action_selftest_skip }}"
+                                    title: "{{ input_selftest__notify_button_skip }}"
+                                  - action: "{{ action_selftest_stop }}"
+                                    title: "{{ input_selftest__notify_button_stoptesting }}"
+                          - alias: "Wait for a response of self-test notification"
+                            wait_for_trigger:
+                              - platform: event
+                                event_type: mobile_app_notification_action
+                                event_data:
+                                  action: "{{ action_selftest_now }}"
+                              - platform: event
+                                event_type: mobile_app_notification_action
+                                event_data:
+                                  action: "{{ action_selftest_skip }}"
+                              - platform: event
+                                event_type: mobile_app_notification_action
+                                event_data:
+                                  action: "{{ action_selftest_stop }}"
+                            timeout:
+                              hours: 0
+                              minutes: "{{ input_selftest__waittimeout_minutes }}"
+                              seconds: 0
+                          - alias: "Delete notification smoke-detector-selftest"
+                            action: notify.mobile_app_{{ device_attr(input_test__notify_device, 'name') | slugify }}
+                            data:
+                              message: "clear_notification"
+                              data:
+                                tag: "smoke-detector-selftest"
 
-                  - alias: "If TEST NOW -> run test"
-                    if:
-                      - condition: template
-                        value_template: "{{ wait.trigger != none }}"
-                      - condition: template
-                        value_template: "{{ wait.trigger.event.data.action == action_selftest_now }}"
-                    then:
-                      - variables:
-                          selftest_now__button_entity: >-
-                            {% set device_of_entity = device_id(repeat.item) %}
-                            {{ device_entities(device_of_entity) | select('match', 
-                            'button.*_selftest$') | list | join }}
-                      - alias: "Activate self-test on device"
-                        action: button.press
-                        target:
-                          entity_id: "{{ selftest_now__button_entity }}"
-                  
-                  - alias: "Continue selftest on wait.trigger &&  (TEST_NOW || SKIP)"
-                    condition: and
-                    conditions:
-                      - condition: template
-                        value_template: "{{ wait.trigger != none }}"
-                      - condition: or
-                        conditions:
-                          - condition: template
-                            value_template: "{{ wait.trigger.event.data.action == action_selftest_now }}"
-                          - condition: template
-                            value_template: "{{ wait.trigger.event.data.action == action_selftest_skip }}"
-            ### END of repeat
+                          - alias: "If TEST NOW -> run test"
+                            if:
+                              - condition: template
+                                value_template: "{{ wait.trigger != none }}"
+                              - condition: template
+                                value_template: "{{ wait.trigger.event.data.action == action_selftest_now }}"
+                            then:
+                              - variables:
+                                  selftest_now__button_entity: >-
+                                    {% set device_of_entity = device_id(repeat.item) %}
+                                    {{ device_entities(device_of_entity) | select('match', 
+                                    'button.*_selftest$') | list | join }}
+                              - alias: "Activate self-test on device"
+                                action: button.press
+                                target:
+                                  entity_id: "{{ selftest_now__button_entity }}"
+                          
+                          - alias: "Continue selftest on wait.trigger &&  (TEST_NOW || SKIP)"
+                            condition: and
+                            conditions:
+                              - condition: template
+                                value_template: "{{ wait.trigger != none }}"
+                              - condition: or
+                                conditions:
+                                  - condition: template
+                                    value_template: "{{ wait.trigger.event.data.action == action_selftest_now }}"
+                                  - condition: template
+                                    value_template: "{{ wait.trigger.event.data.action == action_selftest_skip }}"
+                    ### END of repeat
 
-            - delay: # Delay to prevent the last selftest to restart the automation
-                minutes: "{{ input_selftest__finished_waittimeout_minutes }}"
+                    - delay: # Delay to prevent the last selftest to restart the automation
+                        minutes: "{{ input_selftest__finished_waittimeout_minutes }}"
 
 #############################
 ## Smoke-Alarm-Test Sequence START
 #############################
-        - alias: "IF: input_smoketest__acivated -> real-fire test sequence"
-          if: "{{ input_smoketest__acivated }}"
-          then:
-            - alias: "Set variables for notification smoke-test"
-              variables:
-                action_smoketest_yes: "{{ 'CONTINUE_TEST_REALFIRE_' ~ context.id }}"
-                action_smoketest_no: "{{ 'DONT_TEST_REALFIRE_' ~ context.id }}"
-            - alias: "Send smoke-test notification to recipients"
-              action: notify.mobile_app_{{ device_attr(input_test__notify_device, 'name') | slugify }}
-              data:
-                title: "{{ input_smoketest__notify_title }}"
-                message: >
-                  {{ input_smoketest__notify_message }}
-                data:
-                  timeout: "{{ input_smoketest__waittimeout_minutes | multiply(60) | int(0) }}"
-                  chronometer: true
-                  when: "{{ input_smoketest__waittimeout_minutes | multiply(60) | int(0) }}"
-                  when_relative: true
-                  channel: "Tests"
-                  importance: high
-                  tag: "smoke-detector-smoketest"
-                  #notification_icon: "mdi:cellphone"
-                  actions:
-                    - action: "{{ action_smoketest_yes }}"
-                      title: "{{ input_smoketest__notify_button_yes}}"
-                    - action: "{{ action_smoketest_no }}"
-                      title: "{{ input_smoketest__notify_button_no}}"
-            - alias: "Wait for smoke-test notification response"
-              wait_for_trigger:
-                - platform: event
-                  event_type: mobile_app_notification_action
-                  event_data:
-                    action: "{{ action_smoketest_yes }}"
-                - platform: event
-                  event_type: mobile_app_notification_action
-                  event_data:
-                    action: "{{ action_smoketest_no }}"
-              timeout:
-                hours: 0
-                minutes: "{{ input_smoketest__waittimeout_minutes }}"
-                seconds: 0
+                - alias: "IF: input_smoketest__acivated -> real-fire test sequence"
+                  if: "{{ input_smoketest__acivated }}"
+                  then:
+                    - alias: "Set variables for notification smoke-test"
+                      variables:
+                        action_smoketest_yes: "{{ 'CONTINUE_TEST_REALFIRE_' ~ context.id }}"
+                        action_smoketest_no: "{{ 'DONT_TEST_REALFIRE_' ~ context.id }}"
+                    - alias: "Send smoke-test notification to recipients"
+                      action: notify.mobile_app_{{ device_attr(input_test__notify_device, 'name') | slugify }}
+                      data:
+                        title: "{{ input_smoketest__notify_title }}"
+                        message: >
+                          {{ input_smoketest__notify_message }}
+                        data:
+                          timeout: "{{ input_smoketest__waittimeout_minutes | multiply(60) | int(0) }}"
+                          chronometer: true
+                          when: "{{ input_smoketest__waittimeout_minutes | multiply(60) | int(0) }}"
+                          when_relative: true
+                          channel: "Tests"
+                          importance: high
+                          tag: "smoke-detector-smoketest"
+                          #notification_icon: "mdi:cellphone"
+                          actions:
+                            - action: "{{ action_smoketest_yes }}"
+                              title: "{{ input_smoketest__notify_button_yes}}"
+                            - action: "{{ action_smoketest_no }}"
+                              title: "{{ input_smoketest__notify_button_no}}"
+                    - alias: "Wait for smoke-test notification response"
+                      wait_for_trigger:
+                        - platform: event
+                          event_type: mobile_app_notification_action
+                          event_data:
+                            action: "{{ action_smoketest_yes }}"
+                        - platform: event
+                          event_type: mobile_app_notification_action
+                          event_data:
+                            action: "{{ action_smoketest_no }}"
+                      timeout:
+                        hours: 0
+                        minutes: "{{ input_smoketest__waittimeout_minutes }}"
+                        seconds: 0
 
-            - alias: "If timeout || NO -> delete selftest notification + stop"
-              if:
-                - condition: or
-                  conditions:
-                    - alias: "Test for timeout: wait.trigger is undefined on timout"
-                      condition: template
-                      value_template: "{{ wait.trigger == none }}"
-                    - condition: template
-                      value_template: "{{ wait.trigger.event.data.action == action_smoketest_no }}"
-              then:
-                - alias: "Delete smoketest notification"
-                  action: notify.mobile_app_{{ device_attr(input_test__notify_device, 'name') | slugify }}
-                  data:
-                    message: "clear_notification"
-                    data:
-                      tag: "smoke-detector-smoketest"
-                - stop: "User doesnt want or timeout realfire test"
-          else:
-            - stop: "Smoke tests disabled in automation"
+                    - alias: "If timeout || NO -> delete selftest notification + stop"
+                      if:
+                        - condition: or
+                          conditions:
+                            - alias: "Test for timeout: wait.trigger is undefined on timout"
+                              condition: template
+                              value_template: "{{ wait.trigger == none }}"
+                            - condition: template
+                              value_template: "{{ wait.trigger.event.data.action == action_smoketest_no }}"
+                      then:
+                        - alias: "Delete smoketest notification"
+                          action: notify.mobile_app_{{ device_attr(input_test__notify_device, 'name') | slugify }}
+                          data:
+                            message: "clear_notification"
+                            data:
+                              tag: "smoke-detector-smoketest"
+                        - stop: "User doesnt want or timeout realfire test"
+                  else:
+                    - stop: "Smoke tests disabled in automation"
 
 
 #############################
 ## Smoke-Alarm-Test Sequence END
 #############################
 
-      ### END Choose option triggered_test
-  
-  ##### Level 1: CHOOSE END #####
+              ### END Choose option triggered_test
+          
+          ##### Level 1: CHOOSE END #####
 
 ###############################################################################
 #
@@ -876,166 +906,165 @@ actions:
 #
 ###############################################################################
 
-  - alias: "Sound alarm on all smoke detectors"
-    action: select.select_option
-    data:
-      option: alarm
-    target:
-      entity_id: "{{ buzzers_set_manual_alarm }}"
-
-  - alias: "First execute allalarm_action"
-    choose: []
-    default: !input 'allalarm__action'
-
-  - alias: "Set variables for real fire notification"
-    variables:
-      action_realfire_donothing: "{{ 'REALFIRE_DONOTHING_' ~ context.id }}"
-      action_realfire_mute: "{{ 'REALFIRE_MUTE_' ~ context.id }}"
-      realfire__areas_smoke_detected: >-
-        {% if sensors_smoke_detected | length() > 1 %}
-          {{ sensors_smoke_detected | map('area_name') | list | join(', ') }}
-        {% else %}
-          Smoke-Alarm-Test no area
-        {% endif %}
-  
-  - alias: "Repeat: Notify all devices for real smoke alarm"
-    repeat: 
-      for_each: "{{ input_alarm__notify_devices }}"
-      sequence:  
-        - alias: "Send notification for real fire dismiss or notify"
-          action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
-          data:
-            title: "{{ prepared_allalarm_notify_title }}"
-            message: >
-              {{ prepared_allalarm_notify_message }}
-
-              Area(s): {{ realfire__areas_smoke_detected }}
+          - alias: "Sound alarm on all smoke detectors"
+            action: select.select_option
             data:
-              # Notification is send even on rate limit reached
-              ttl: 0
-              priority: high
-              importance: max
-              color: "red"
-              # Ring and vibrate even on DND
-              channel: alarm_stream
-              media_stream: alarm_stream
-              tts_text: "Smoke alarm detected!"
-              # keep even touched
-              #sticky: true
-              # cannot swipe away
-              persistent: true
-              tag: "smoke-detector-alarm"
-              #notification_icon: "mdi:cellphone"
-              actions:
-                - action: "{{ action_realfire_donothing }}"
-                  title: "{{ input_allalarm__notify_button_deletenotification }}"
-                - action: "{{ action_realfire_mute }}"
-                  title: "{{ input_allalarm__notify_button_mutealarm }}"
-  # TODO Make it user configurable
-  - alias: "Repeat: Notify all devices for real smoke alarm TTS"
-    repeat: 
-      for_each: "{{ input_alarm__notify_devices }}"
-      sequence:  
-        - alias: "Send notification for real fire dismiss or notify"
-          action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
-          data:
-            message: TTS
-            data:
-              # Notification is send even on rate limit reached
-              ttl: 0
-              priority: high
-              importance: max
-              color: "red"
-              # Ring and vibrate even on DND
-              channel: alarm_stream
-              media_stream: alarm_stream_max
-              tts_text: "Smoke alarm detected!"
-              tag: "smoke-detector-alarm"
-  ### END Repeat: notify all devices for real smoke alarm
+              option: alarm
+            target:
+              entity_id: "{{ buzzers_set_manual_alarm }}"
 
-# TODO Reapeat collect all areas of manually started detectors
+          - alias: "First execute allalarm_action"
+            choose: []
+            default: !input 'allalarm__action'
 
-  - alias: "Wait for a response action_realfire_donothing or action_realfire_mute"
-    wait_for_trigger:
-      - platform: event
-        event_type: mobile_app_notification_action
-        event_data:
-          action: "{{ action_realfire_donothing }}"
-      - platform: event
-        event_type: mobile_app_notification_action
-        event_data:
-          action: "{{ action_realfire_mute }}"
+          - alias: "Set variables for real fire notification"
+            variables:
+              action_realfire_donothing: "{{ 'REALFIRE_DONOTHING_' ~ context.id }}"
+              action_realfire_mute: "{{ 'REALFIRE_MUTE_' ~ context.id }}"
+              realfire__areas_smoke_detected: >-
+                {% if sensors_smoke_detected | length() > 1 %}
+                  {{ sensors_smoke_detected | map('area_name') | list | join(', ') }}
+                {% else %}
+                  Smoke-Alarm-Test no area
+                {% endif %}
+          
+          - alias: "Repeat: Notify all devices for real smoke alarm"
+            repeat: 
+              for_each: "{{ input_alarm__notify_devices }}"
+              sequence:  
+                - alias: "Send notification for real fire dismiss or notify"
+                  action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
+                  data:
+                    title: "{{ prepared_allalarm_notify_title }}"
+                    message: >
+                      {{ prepared_allalarm_notify_message }}
 
-  - alias: "If: wait.trigger -> Delete real fire notification"
-    if:
-      - "{{ wait.trigger != none }}"
-    then:
-      - alias: "Delete real fire notification"
-        repeat:
-          for_each: "{{ input_alarm__notify_devices }}"
-          sequence:  
-            - alias: "Delete real fire notification to alarm group"
-              action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
-              data:
-                message: "clear_notification"
-                data:
-                  ttl: 0
-                  priority: high
-                  importance: max
-                  tag: "smoke-detector-alarm"
-
-  - alias: "If: action_realfire_mute -> Mute"
-    if:
-      - "{{ wait.trigger.event.data.action == action_realfire_mute }}"
-    then:
-      - variables:
-          action_mute_triggered_timestamp: >-
-            {{ now() | as_timestamp | int(0) }}
-      - alias: "Repeat: Mute detectors for x seconds"
-        repeat:
-          # TODO make it configurable
-          while:
-            - condition: template
-              value_template: "{{ (now() | as_timestamp | int(0)) - action_mute_triggered_timestamp < 120 }}"
-          sequence:
-            - alias: "Wait for new detector maual alarm"
-              wait_template: >-
-                {{ expand(buzzers_check_manual_alarm_set) | selectattr('state', 'equalto', 
-                'on') | map(attribute='entity_id') | list | length() > 0 }}
-              timeout:
-                seconds: >-
-                  {{ 120 - ((now() | as_timestamp| int(0)) - action_mute_triggered_timestamp) }}
-
-            - variables:
-                detectors_signalling_alarm: >-
-                  {% set on_entities = expand(buzzers_check_manual_alarm_set) | selectattr('state', 'equalto', 'on') | map(attribute='entity_id') | list %}
-                  {{ on_entities }}
-
-            - alias: "Mute all current detectors with alarm ON"
-              repeat:
-                for_each: "{{ detectors_signalling_alarm }}"
-                sequence:
-                  - variables:
-                      buzzer_for_detector: >-
-                        {% set device_of_entity = device_id(repeat.item) %}
-                        {{ device_entities(device_of_entity) | select('match', 'select.*_buzzer$') | list | join }}
-                  - alias: "Set mute to detector"
-                    action: select.select_option
+                      Area(s): {{ realfire__areas_smoke_detected }}
                     data:
-                      option: mute
-                    target:
-                      entity_id: "{{ buzzer_for_detector }}"
+                      # Notification is send even on rate limit reached
+                      ttl: 0
+                      priority: high
+                      importance: max
+                      color: "red"
+                      # Ring and vibrate even on DND
+                      channel: alarm_stream
+                      media_stream: alarm_stream
+                      tts_text: "Smoke alarm detected!"
+                      # keep even touched
+                      #sticky: true
+                      # cannot swipe away
+                      persistent: true
+                      tag: "smoke-detector-alarm"
+                      #notification_icon: "mdi:cellphone"
+                      actions:
+                        - action: "{{ action_realfire_donothing }}"
+                          title: "{{ input_allalarm__notify_button_deletenotification }}"
+                        - action: "{{ action_realfire_mute }}"
+                          title: "{{ input_allalarm__notify_button_mutealarm }}"
+          # TODO Make it user configurable
+          - alias: "Repeat: Notify all devices for real smoke alarm TTS"
+            repeat: 
+              for_each: "{{ input_alarm__notify_devices }}"
+              sequence:  
+                - alias: "Send notification for real fire dismiss or notify"
+                  action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
+                  data:
+                    message: TTS
+                    data:
+                      # Notification is send even on rate limit reached
+                      ttl: 0
+                      priority: high
+                      importance: max
+                      color: "red"
+                      # Ring and vibrate even on DND
+                      channel: alarm_stream
+                      media_stream: alarm_stream_max
+                      tts_text: "Smoke alarm detected!"
+                      tag: "smoke-detector-alarm"
+          ### END Repeat: notify all devices for real smoke alarm
 
-            - alias: "Forced delay for the sensor to react and prevent loop-race"
-              delay:
-                seconds: 5
+        # TODO Reapeat collect all areas of manually started detectors
 
-      # We need to do this because sensors are not reliable
-      - alias: "Set mute to all detector"
-        action: select.select_option
-        data:
-          option: mute
-        target:
-          entity_id: "{{ buzzers_all }}"
-  
-mode: single
+          - alias: "Wait for a response action_realfire_donothing or action_realfire_mute"
+            wait_for_trigger:
+              - platform: event
+                event_type: mobile_app_notification_action
+                event_data:
+                  action: "{{ action_realfire_donothing }}"
+              - platform: event
+                event_type: mobile_app_notification_action
+                event_data:
+                  action: "{{ action_realfire_mute }}"
+
+          - alias: "If: wait.trigger -> Delete real fire notification"
+            if:
+              - "{{ wait.trigger != none }}"
+            then:
+              - alias: "Delete real fire notification"
+                repeat:
+                  for_each: "{{ input_alarm__notify_devices }}"
+                  sequence:  
+                    - alias: "Delete real fire notification to alarm group"
+                      action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
+                      data:
+                        message: "clear_notification"
+                        data:
+                          ttl: 0
+                          priority: high
+                          importance: max
+                          tag: "smoke-detector-alarm"
+
+          - alias: "If: action_realfire_mute -> Mute"
+            if:
+              - "{{ wait.trigger.event.data.action == action_realfire_mute }}"
+            then:
+              - variables:
+                  action_mute_triggered_timestamp: >-
+                    {{ now() | as_timestamp | int(0) }}
+              - alias: "Repeat: Mute detectors for x seconds"
+                repeat:
+                  # TODO make it configurable
+                  while:
+                    - condition: template
+                      value_template: "{{ (now() | as_timestamp | int(0)) - action_mute_triggered_timestamp < 120 }}"
+                  sequence:
+                    - alias: "Wait for new detector maual alarm"
+                      wait_template: >-
+                        {{ expand(buzzers_check_manual_alarm_set) | selectattr('state', 'equalto', 
+                        'on') | map(attribute='entity_id') | list | length() > 0 }}
+                      timeout:
+                        seconds: >-
+                          {{ 120 - ((now() | as_timestamp| int(0)) - action_mute_triggered_timestamp) }}
+
+                    - variables:
+                        detectors_signalling_alarm: >-
+                          {% set on_entities = expand(buzzers_check_manual_alarm_set) | selectattr('state', 'equalto', 'on') | map(attribute='entity_id') | list %}
+                          {{ on_entities }}
+
+                    - alias: "Mute all current detectors with alarm ON"
+                      repeat:
+                        for_each: "{{ detectors_signalling_alarm }}"
+                        sequence:
+                          - variables:
+                              buzzer_for_detector: >-
+                                {% set device_of_entity = device_id(repeat.item) %}
+                                {{ device_entities(device_of_entity) | select('match', 'select.*_buzzer$') | list | join }}
+                          - alias: "Set mute to detector"
+                            action: select.select_option
+                            data:
+                              option: mute
+                            target:
+                              entity_id: "{{ buzzer_for_detector }}"
+
+                    - alias: "Forced delay for the sensor to react and prevent loop-race"
+                      delay:
+                        seconds: 5
+
+              # We need to do this because sensors are not reliable
+              - alias: "Set mute to all detector"
+                action: select.select_option
+                data:
+                  option: mute
+                target:
+                  entity_id: "{{ buzzers_all }}"
+          

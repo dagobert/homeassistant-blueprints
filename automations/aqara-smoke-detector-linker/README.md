@@ -12,6 +12,7 @@
 - ✅ Fire-Alarm Text-to-Speech (TTS) notification
 - ✅ Mute Alarm action on notification
 - ✅ Action on alarm
+- ✅ Wakeup detectors on tests and alarm
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-linker/aqara-smoke_detector-linker-testandalarm.yaml)
 

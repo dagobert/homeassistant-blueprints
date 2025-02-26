@@ -35,7 +35,7 @@ blueprint:
     ✅ Smoke-Alarm pre-notification for false alarm prevention
     ✅ Mute alarm
     ✅ Persistent Fire-Alarm notification
-    ✅ Text-to-Speech notification for Android (iOS not tested)
+    ✅ Customizable Text-to-Speech notification for Android (iOS not tested)
     ✅ Customizable notifications
     ✅ Actions on alarm
     ✅ Wakeup detectors on test and alarm
@@ -47,7 +47,7 @@ blueprint:
 
     #️⃣ <s>Add Actions on First-Alarm</s>
     #️⃣ <s>Add Actions on Real-Fire-Alarm</s>
-    #️⃣ Customization of TTS
+    #️⃣ <s>Customization of TTS</s>
     #️⃣ Test and notify on selftest when smoke detectors do not have linkage_alarm enabled.
     #️⃣ Show all detectors that sound alarm on smoke detected
     #️⃣ Move the tiggered_alarm notification to after the selftest stuff (yes/No?)
@@ -244,6 +244,13 @@ blueprint:
         of all smoke detectors.
       icon: mdi:fire
       input:
+        allalarm__ttsnotification_message:
+          name: "Text-to-Speech message"
+          description: |
+            This message is sent in parallel to the text notification to the mobile device and uses its Text-to-Speech service.
+          default: "Smoke alarm detected! Smoke alarm detected! Smoke alarm detected!"
+          selector:
+            text:
         allalarm__notify_title:
           name: "All alarm notification: Title"
           description: >
@@ -510,6 +517,7 @@ variables:
   input_firstalarm__action: !input 'firstalarm__action'
 
   # Real-Fire
+  input_allalarm__ttsnotification_message: !input 'allalarm__ttsnotification_message'
   input_allalarm__notify_title: !input 'allalarm__notify_title'
   input_allalarm__notify_message: !input 'allalarm__notify_message'
   input_allalarm__notify_button_deletenotification: !input 'allalarm__notify_button_deletenotification'
@@ -949,7 +957,7 @@ actions:
                       # Ring and vibrate even on DND
                       channel: alarm_stream
                       media_stream: alarm_stream
-                      tts_text: "Smoke alarm detected!"
+                      tts_text: "{{ input_allalarm__ttsnotification_message }}"
                       # keep even touched
                       #sticky: true
                       # cannot swipe away
@@ -979,7 +987,7 @@ actions:
                       # Ring and vibrate even on DND
                       channel: alarm_stream
                       media_stream: alarm_stream_max
-                      tts_text: "Smoke alarm detected!"
+                      tts_text: "{{ input_allalarm__ttsnotification_message }}"
                       tag: "smoke-detector-alarm"
           ### END Repeat: notify all devices for real smoke alarm
 

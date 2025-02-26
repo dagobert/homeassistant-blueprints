@@ -1,4 +1,4 @@
-# Aqara smoke detector linker (Test and Alarm)
+# Aqara Smoke Detector Linker (Test and Alarm)
 
 *Minimum required version of Home Assistant: 2024.10.0*
 
@@ -13,6 +13,8 @@
 - ✅ Mute Alarm action on notification
 - ✅ Action on alarm
 - ✅ Wakeup detectors on tests and alarm
+
+[Subscribe to this Issue](https://github.com/dagobert/homeassistant-blueprints/issues/1) to stay up-to-date since Home Assistant has no facility to manage blueprint updates. Updates are only posted if there are functional changes or new features. 
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-linker/aqara-smoke_detector-linker-testandalarm.yaml)
 

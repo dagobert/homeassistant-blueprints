@@ -1,6 +1,6 @@
 blueprint:
   name: "Aqara Smoke Detector Keep-alive"
-  source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-keepalive/aqara-smoke-detector-keepalive.yaml
+  source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-keepalive/aqara-smoke_detector-keepalive.yaml
   author: "CV"
   domain: automation
   homeassistant:
@@ -31,13 +31,17 @@ blueprint:
         #       variations of model names
         device:
           filter:
-            - manufacturer: Aqara
+            - integration: mqtt
+              manufacturer: Aqara
               model: Smart smoke detector
-            - manufacturer: Aqara
+            - integration: mqtt
+              manufacturer: Aqara
               model: Smart smoke detector (JY-GZ-01AQ)
-            - manufacturer: Aqara
+            - integration: mqtt
+              manufacturer: Aqara
               model: (JY-GZ-01AQ)
-            - manufacturer: Aqara
+            - integration: mqtt
+              manufacturer: Aqara
               model: JY-GZ-01AQ
           multiple: true
     trigger__time_pattern:

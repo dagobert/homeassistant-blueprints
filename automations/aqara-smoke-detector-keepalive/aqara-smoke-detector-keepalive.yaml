@@ -1,6 +1,6 @@
 blueprint:
   name: "Aqara Smoke Detector Keep-alive"
-  source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-keepalive/aqara-smoke_detector-keepalive.yaml
+  source_url: https://github.com/dagobert/homeassistant-blueprints/blob/stable/automations/aqara-smoke-detector-keepalive/aqara-smoke-detector-keepalive.yaml
   author: "CV"
   domain: automation
   homeassistant:

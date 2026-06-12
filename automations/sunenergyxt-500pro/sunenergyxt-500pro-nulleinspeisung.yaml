@@ -1,0 +1,516 @@
+blueprint:
+  name: "🔋 SunEnergyXT: Nulleinspeisung, Netzladung & EV-Schutz (Smart & Safe)"
+  description: >
+    ## 📝 Zusammenfassung
+    Dieses Blueprint steuert das **SunEnergyXT 500 PRO** System intelligent in Haushalten mit einer **bestehenden PV-Altanlage** und einer **Elektroauto-Wallbox**. Es sorgt für eine präzise Nulleinspeisung des Hausverbrauchs und lädt den Speicher bei Überschuss der Altanlage direkt via AC aus dem Netz nach – vollautomatisch und lokal.
+
+
+    ---
+
+
+    ## ✨ Hauptfeatures
+    * **🎯 Dynamische Nulleinspeisung (Entladen):** Deckt den aktuellen Hausverbrauch in Echtzeit ab (einstellbar bis 2400W).
+    * **🔌 Intelligente AC-Netzladung (Laden):** Erkennt Überschuss der PV-Altanlage und lädt diesen mit bis zu 2400W in den Speicher.
+    * **🚗 Integrierter EV-Schutz:** Verhindert effektiv, dass der Speicher seine Energie im Elektroauto entlädt, während das Haus weiterhin versorgt wird.
+    * **🔄 Intelligente Lade-Hysterese:** Lädt den Akku bis zu einem Wunschwert (z.B. 100%) und pausiert die AC-Ladung, bis er wieder unter eine Schwelle (z.B. 90%) fällt, um dauerhaftes Regelschwingen zu vermeiden.
+    * **🛡️ Einstellbarer Tiefentladeschutz:** Stoppt das Entladen bei einem unteren Limit (z.B. 10%) und gibt es erst nach einer Teilladung (z.B. 15%) wieder frei.
+
+
+    ---
+
+
+    ## 🚨 Besonderheiten & Sicherheitsmechanismen (Fail-Safe)
+    * **⚡ Hochgeschwindigkeits-Regelung:** Nutzt *ausschließlich den Hauptstromzähler als Taktgeber*. Unnötige Trigger wurden entfernt. Werte für SoC und Wallbox werden im laufenden Prozess direkt live ausgelesen.
+    * **🛑 Hauptzähler-Ausfallschutz:** Liefert der Zähler keine Werte (z.B. wegen eines WLAN-Ausfalls), schaltet das System die Lade- und Entladeleistung sofort auf **0 Watt** (Not-Aus).
+    * **⚠️ Wallbox-Ausfallschutz:** Sollte der Wallbox-Sensor offline gehen (`unavailable` / `unknown`), wechselt das System beim Entladen in einen Schutzmodus. Der Speicher gibt dann nur noch eine konfigurierbare **Sicherheits-Leistung** (z.B. 150W für die Grundlast) ab, damit der Akku nicht unbemerkt in ein ladendes Auto entleert wird.
+  
+  domain: automation
+  input:
+    main_power_meter:
+      name: "📊 Hauptstromzähler (Power)"
+      description: "Der Leistungssensor Ihres Hauptzählers (Taktgeber für die Echtzeit-Regelung. Positiv bei Bezug, negativ bei Einspeisung)."
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: power
+    battery_soc:
+      name: "🔋 Speicher Ladestand (SoC)"
+      description: "Der Prozent-Sensor für den aktuellen Ladestand des SunEnergyXT Speichers."
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: battery
+    wallbox_power:
+      name: "🚗 Wallbox Leistung (Power)"
+      description: "Der Leistungssensor Ihres Elektroauto-Laders / Ihrer Wallbox."
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: power
+    charge_helper:
+      name: "🔓 Helfer: Freigabe Netzladung"
+      description: "Ein manuell erstellter 'Schalter' (input_boolean) zur Steuerung der Lade-Hysterese."
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+    discharge_helper:
+      name: "🔓 Helfer: Freigabe Entladung"
+      description: "Ein manuell erstellter 'Schalter' (input_boolean) zur Steuerung des Tiefentladeschutzes."
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+    ac_output_limit_entity:
+      name: "⚡ Entität: AC Ausgangslimit (Entladen)"
+      description: "Die Nummer-Entität des SunEnergyXT zur Steuerung des Ausgangslimits."
+      selector:
+        entity:
+          filter:
+            - domain: number
+    ac_charge_power_entity:
+      name: "🔌 Entität: AC Ladeleistung (Netzladen)"
+      description: "Die Nummer-Entität des SunEnergyXT zur Steuerung der AC-Netzladeleistung."
+      selector:
+        entity:
+          filter:
+            - domain: number
+    max_discharge_power:
+      name: "🚀 Maximale Entladeleistung"
+      description: "Die maximale Leistung (in Watt), mit der der Speicher das Hausnetz im Normalbetrieb unterstützen darf."
+      default: 2400
+      selector:
+        number:
+          min: 0
+          max: 2400
+          unit_of_measurement: W
+          mode: box
+    max_discharge_safe_power:
+      name: "🛡️ Sicherheits-Entladeleistung (Wallbox-Ausfall)"
+      description: "Maximale Entladeleistung (in Watt), wenn der Wallbox-Sensor offline ist. Deckt im Idealfall nur Ihre Grundlast (z.B. 150W) ab."
+      default: 150
+      selector:
+        number:
+          min: 0
+          max: 1000
+          unit_of_measurement: W
+          mode: box
+    max_charge_power:
+      name: "📥 Maximale AC-Ladeleistung"
+      description: "Die maximale Leistung (in Watt), mit der der Speicher via AC aus dem Netz (Überschuss der Altanlage) geladen werden darf."
+      default: 2400
+      selector:
+        number:
+          min: 0
+          max: 2400
+          unit_of_measurement: W
+          mode: box
+    wallbox_standby_threshold:
+      name: "💤 Wallbox Standby-Schwelle"
+      description: "Leistungen unter diesem Wert (in Watt) werden als Standby interpretiert und nicht vom Hausverbrauch abgezogen."
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: W
+          mode: box
+    soc_charge_stop:
+      name: "⏹️ Netzladung stoppen bei SoC"
+      description: "Obere Ladegrenze, bei welcher die AC-Netzladung beendet wird."
+      default: 100
+      selector:
+        number:
+          min: 50
+          max: 100
+          unit_of_measurement: "%"
+          mode: slider
+    soc_charge_start:
+      name: "▶️ Netzladung wieder erlauben bei SoC"
+      description: "Erst wenn der Akku nach der Vollladung unter diesen Prozentwert fällt, wird die Netzladung wieder freigegeben."
+      default: 90
+      selector:
+        number:
+          min: 40
+          max: 99
+          unit_of_measurement: "%"
+          mode: slider
+    soc_discharge_stop:
+      name: "🛑 Entladen stoppen bei SoC"
+      description: "Untere Entladegrenze (Tiefentladeschutz), bei welcher der Speicher über Home Assistant weggeschaltet wird."
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 30
+          unit_of_measurement: "%"
+          mode: slider
+    soc_discharge_start:
+      name: "🔄 Entladen wieder erlauben bei SoC"
+      description: "Nach Erreichen des Tiefentladeschutzes muss der Akku erst wieder über diesen Wert steigen, um entladen zu dürfen."
+      default: 15
+      selector:
+        number:
+          min: 5
+          max: 40
+          unit_of_measurement: "%"
+          mode: slider
+
+mode: restart
+
+trigger:
+  - platform: state
+    entity_id: !input main_power_meter
+
+variables:
+  main_meter: !input main_power_meter
+  wb_power: !input wallbox_power
+  bat_soc: !input battery_soc
+  ac_out_entity: !input ac_output_limit_entity
+  ac_chg_entity: !input ac_charge_power_entity
+  chg_helper: !input charge_helper
+  dischg_helper: !input discharge_helper
+  wb_threshold: !input wallbox_standby_threshold
+  max_out: !input max_discharge_power
+  max_out_safe: !input max_discharge_safe_power
+  max_chg: !input max_charge_power
+  cfg_soc_chg_stop: !input soc_charge_stop
+  cfg_soc_chg_start: !input soc_charge_start
+  cfg_soc_dischg_stop: !input soc_discharge_stop
+  cfg_soc_dischg_start: !input soc_discharge_start
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ states(main_meter) in ['unavailable', 'unknown'] }}"
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input ac_output_limit_entity
+            data:
+              value: 0
+          - service: number.set_value
+            target:
+              entity_id: !input ac_charge_power_entity
+            data:
+              value: 0
+          - stop: "Hauptzähler ausgefallen! Not-Aus wurde aktiviert."
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) >= (cfg_soc_chg_stop | float - 0.1) }}"
+        sequence:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: !input charge_helper
+      - conditions:
+          - condition: template
+            value_template: "{{ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) < cfg_soc_chg_start | float }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: !input charge_helper
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) <= cfg_soc_dischg_stop | float }}"
+        sequence:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: !input discharge_helper
+      - conditions:
+          - condition: template
+            value_template: "{{ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) > cfg_soc_dischg_start | float }}"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: !input discharge_helper
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ states(dischg_helper) == 'on' }}"
+          - condition: template
+            value_template: >-
+              {% set hauptzaehler = states(main_meter) | float(0) %}
+              {% set wallbox_status = states(wb_power) %}
+              {% set wallbox = states(wb_power) | float(0) if wallbox_status not in ['unavailable', 'unknown'] and states(wb_power) | float(0) >= (wb_threshold | float) else 0 %}
+              {{ (hauptzaehler - wallbox) > 10 }}
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input ac_charge_power_entity
+            data:
+              value: 0
+          - service: number.set_value
+            target:
+              entity_id: !input ac_output_limit_entity
+            data:
+              value: >-
+                {% set aktueller_ausgang = states(ac_out_entity) | float(0) %}
+                {% set hauptzaehler = states(main_meter) | float(0) %}
+                {% set wallbox_status = states(wb_power) %}
+                {% if wallbox_status in ['unavailable', 'unknown'] %}
+                  {% set limit = max_out_safe | float %}
+                  {% set haus_netzbezug = hauptzaehler %}
+                {% else %}
+                  {% set limit = max_out | float %}
+                  {% set wallbox = states(wb_power) | float(0) if states(wb_power) | float(0) >= (wb_threshold | float) else 0 %}
+                  {% set haus_netzbezug = hauptzaehler - wallbox %}
+                {% endif %}
+                {% set neuer_wert = aktueller_ausgang + haus_netzbezug %}
+                {{ [neuer_wert, limit] | min | max(0) }}
+
+      - conditions:
+          - condition: template
+            value_template: "{{ states(main_meter) | float(0) < -10 }}"
+          - condition: template
+            value_template: "{{ states(chg_helper) == 'on' }}"
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input ac_output_limit_entity
+            data:
+              value: 0
+          - service: number.set_value
+            target:
+              entity_id: !input ac_charge_power_entity
+            data:
+              value: >-
+                {% set aktuelle_ladung = states(ac_chg_entity) | float(0) %}
+                {% set ueberschuss = states(main_meter) | float(0) | abs %}
+                {% set neuer_wert = aktuelle_ladung + ueberschuss %}
+                {{ [neuer_wert, max_chg | float] | min | max(0) }}
+
+      - conditions:
+          - condition: template
+            value_template: "true"
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input ac_output_limit_entity
+            data:
+              value: 0
+          - service: number.set_value
+            target:
+              entity_id: !input ac_charge_power_entity
+            data:
+              value: 0
+    # --- GRENZWERTE UND OPTIONEN ---
+    max_discharge_power:
+      name: "🚀 Maximaler Entladestrom"
+      description: "Geben Sie hier das positive Limit (in Watt) für die maximale Abgabe ins Hausnetz ein."
+      default: 2400
+      selector:
+        number:
+          min: 0
+          max: 2400
+          unit_of_measurement: W
+          mode: box
+
+    max_discharge_safe_power:
+      name: "🛡️ Sicherheits-Entladung (Wallbox-Ausfall)"
+      description: "Maximale Entladung (z.B. Grundlast 150W), wenn der Wallbox-Sensor offline ist."
+      default: 150
+      selector:
+        number:
+          min: 0
+          max: 1000
+          unit_of_measurement: W
+          mode: box
+
+    max_charge_power:
+      name: "📥 Maximaler Ladestrom"
+      description: "Geben Sie hier das positive Limit (in Watt) für das maximale Laden aus dem Netz ein (wird intern automatisch negativ umgerechnet)."
+      default: 2400
+      selector:
+        number:
+          min: 0
+          max: 2400
+          unit_of_measurement: W
+          mode: box
+
+    wallbox_standby_threshold:
+      name: "💤 Wallbox Standby-Schwelle"
+      description: "Leistungen unter diesem Wert (in Watt) werden als Standby ignoriert."
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: W
+          mode: box
+
+    soc_charge_stop:
+      name: "⏹️ Netzladung stoppen bei SoC"
+      default: 100
+      selector:
+        number:
+          min: 50
+          max: 100
+          unit_of_measurement: "%"
+          mode: slider
+
+    soc_charge_start:
+      name: "▶️ Netzladung wieder erlauben bei SoC"
+      default: 90
+      selector:
+        number:
+          min: 40
+          max: 99
+          unit_of_measurement: "%"
+          mode: slider
+
+    soc_discharge_stop:
+      name: "🛑 Entladen stoppen bei SoC"
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 30
+          unit_of_measurement: "%"
+          mode: slider
+
+    soc_discharge_start:
+      name: "🔄 Entladen wieder erlauben bei SoC"
+      default: 15
+      selector:
+        number:
+          min: 5
+          max: 40
+          unit_of_measurement: "%"
+          mode: slider
+
+mode: restart
+
+trigger:
+  - platform: state
+    entity_id: !input main_power_meter
+variables:
+  main_meter: !input main_power_meter
+  wb_power: !input wallbox_power
+  bat_soc: !input battery_soc
+  comb_entity: !input combined_power_entity
+  chg_helper: !input charge_helper
+  dischg_helper: !input discharge_helper
+  
+  wb_threshold: !input wallbox_standby_threshold
+  max_out: !input max_discharge_power
+  max_out_safe: !input max_discharge_safe_power
+  max_chg: !input max_charge_power
+  
+  cfg_soc_chg_stop: !input soc_charge_stop
+  cfg_soc_chg_start: !input soc_charge_start
+  cfg_soc_dischg_stop: !input soc_discharge_stop
+  cfg_soc_dischg_start: !input soc_discharge_start
+
+action:
+  # =========================================================================
+  # 🚨 CRITICAL FAIL-SAFE: Ist der Hauptzähler offline? Sofort auf 0W regeln!
+  # =========================================================================
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "[[ states(main_meter) in ['unavailable', 'unknown'] ]]"
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input combined_power_entity
+            data:
+              value: 0
+          - stop: "Hauptzähler ausgefallen! Not-Aus aktiv."
+
+  # =========================================================================
+  # 🔋 1. HYSTERESE FÜR NETZLADUNG (Schalter EIN/AUS)
+  # =========================================================================
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "[[ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) >= (cfg_soc_chg_stop | float - 0.1) ]]"
+        sequence:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: !input charge_helper
+      - conditions:
+          - condition: template
+            value_template: "[[ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0)  cfg_soc_dischg_start | float ]]"
+        sequence:
+          - service: input_boolean.turn_on
+            target:
+              entity_id: !input discharge_helper
+  # =========================================================================
+  # 📊 3. HAUPTREGELUNG: BERECHNUNG DER LEISTUNGSVORGABE
+  # =========================================================================
+  - choose:
+      # ---------------------------------------------------------------------
+      # FALL A: Netzbezug liegt vor & Entladen ist erlaubt -> Nulleinspeisung Haus (POSITIVER WERT)
+      # ---------------------------------------------------------------------
+      - conditions:
+          - condition: template
+            value_template: "[[ states(dischg_helper) == 'on' ]]"
+          - condition: template
+            value_template: >-
+              {% set hauptzaehler = states(main_meter) | float(0) %}
+              {% set wallbox_status = states(wb_power) %}
+              {% set wallbox = states(wb_power) | float(0) if wallbox_status not in ['unavailable', 'unknown'] and states(wb_power) | float(0) >= (wb_threshold | float) else 0 %}
+              {{ (hauptzaehler - wallbox) > 10 }}
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input combined_power_entity
+            data:
+              value: >-
+                {% set aktueller_regler = states(comb_entity) | float(0) %}
+                {% set hauptzaehler = states(main_meter) | float(0) %}
+                {% set wallbox_status = states(wb_power) %}
+                
+                {# Wallbox-Ausfallschutz auswerten #}
+                [% if wallbox_status in ['unavailable', 'unknown'] %]
+                  [% set limit = max_out_safe | float %]
+                  [% set haus_netzbezug = hauptzaehler %]
+                {% else %}
+                  [% set limit = max_out | float %]
+                  [% set wallbox = states(wb_power) | float(0) if states(wb_power) | float(0) >= (wb_threshold | float) else 0 %]
+                  [% set haus_netzbezug = hauptzaehler - wallbox %}
+                [% endif %]
+                
+                {# WICHTIG: Falls der Regler vorher im negativen Bereich (Laden) war, setzen wir ihn für die Berechnung virtuell auf 0 #}
+                {% set realer_ausgang = aktueller_regler if aktueller_regler > 0 else 0 %}
+                {% set neuer_wert = realer_ausgang + haus_netzbezug %}
+                [[ [neuer_wert, limit] | min | max(0) ]]
+
+      # ---------------------------------------------------------------------
+      # FALL B: Überschuss liegt vor & Laden ist erlaubt -> AC-Netzladung (NEGATIVER WERT)
+      # ---------------------------------------------------------------------
+      - conditions:
+          - condition: template
+            value_template: "[[ states(main_meter) | float(0) -
+                {% set aktueller_regler = states(comb_entity) | float(0) %}
+                {% set ueberschuss = states(main_meter) | float(0) %} {# Ist bereits ein negativer Wert! #}
+                
+                {# WICHTIG: Falls der Regler vorher im positiven Bereich (Entladen) war, setzen wir ihn virtuell auf 0 #}
+                {% set reale_ladung = aktueller_regler if aktueller_regler < 0 else 0 %}
+                {% set neuer_wert = reale_ladung + ueberschuss %}
+                
+                {# Mathematisches Ladelimit berechnen (Aus dem positiven UI-Input ein negatives Limit machen) #}
+                {% set max_lade_limit = (max_chg | float) * -1 %}
+                [[ [neuer_wert, 0] | min | max(max_lade_limit) ]]
+
+      # ---------------------------------------------------------------------
+      # FALL C: Idealbereich bereits erreicht oder System im Pausenmodus -> Auf 0W setzen
+      # ---------------------------------------------------------------------
+      - conditions:
+          - condition: template
+            value_template: "true"
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input combined_power_entity
+            data:
+              value: 0

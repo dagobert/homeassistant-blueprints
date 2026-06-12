@@ -1,5 +1,5 @@
 blueprint:
-  name: "🔋 SunEnergyXT: Nulleinspeisung, Netzladung & EV-Schutz (Smart & Safe)"
+  name: "SunEnergyXT: Nulleinspeisung, Netzladung & EV-Schutz (Smart & Safe)"
   description: >
     ## 📝 Zusammenfassung
     Dieses Blueprint steuert das **SunEnergyXT 500 PRO** System intelligent in Haushalten mit einer **bestehenden PV-Altanlage** und einer **Elektroauto-Wallbox**. Es sorgt für eine präzise Nulleinspeisung des Hausverbrauchs und lädt den Speicher bei Überschuss der Altanlage direkt via AC aus dem Netz nach – vollautomatisch und lokal.

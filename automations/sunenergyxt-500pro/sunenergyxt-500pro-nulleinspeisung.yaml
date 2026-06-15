@@ -1,516 +1,985 @@
 blueprint:
-  name: "SunEnergyXT: Nulleinspeisung, Netzladung & EV-Schutz (Smart & Safe)"
-  description: >
-    ## 📝 Zusammenfassung
-    Dieses Blueprint steuert das **SunEnergyXT 500 PRO** System intelligent in Haushalten mit einer **bestehenden PV-Altanlage** und einer **Elektroauto-Wallbox**. Es sorgt für eine präzise Nulleinspeisung des Hausverbrauchs und lädt den Speicher bei Überschuss der Altanlage direkt via AC aus dem Netz nach – vollautomatisch und lokal.
-
-
-    ---
-
-
-    ## ✨ Hauptfeatures
-    * **🎯 Dynamische Nulleinspeisung (Entladen):** Deckt den aktuellen Hausverbrauch in Echtzeit ab (einstellbar bis 2400W).
-    * **🔌 Intelligente AC-Netzladung (Laden):** Erkennt Überschuss der PV-Altanlage und lädt diesen mit bis zu 2400W in den Speicher.
-    * **🚗 Integrierter EV-Schutz:** Verhindert effektiv, dass der Speicher seine Energie im Elektroauto entlädt, während das Haus weiterhin versorgt wird.
-    * **🔄 Intelligente Lade-Hysterese:** Lädt den Akku bis zu einem Wunschwert (z.B. 100%) und pausiert die AC-Ladung, bis er wieder unter eine Schwelle (z.B. 90%) fällt, um dauerhaftes Regelschwingen zu vermeiden.
-    * **🛡️ Einstellbarer Tiefentladeschutz:** Stoppt das Entladen bei einem unteren Limit (z.B. 10%) und gibt es erst nach einer Teilladung (z.B. 15%) wieder frei.
-
-
-    ---
-
-
-    ## 🚨 Besonderheiten & Sicherheitsmechanismen (Fail-Safe)
-    * **⚡ Hochgeschwindigkeits-Regelung:** Nutzt *ausschließlich den Hauptstromzähler als Taktgeber*. Unnötige Trigger wurden entfernt. Werte für SoC und Wallbox werden im laufenden Prozess direkt live ausgelesen.
-    * **🛑 Hauptzähler-Ausfallschutz:** Liefert der Zähler keine Werte (z.B. wegen eines WLAN-Ausfalls), schaltet das System die Lade- und Entladeleistung sofort auf **0 Watt** (Not-Aus).
-    * **⚠️ Wallbox-Ausfallschutz:** Sollte der Wallbox-Sensor offline gehen (`unavailable` / `unknown`), wechselt das System beim Entladen in einen Schutzmodus. Der Speicher gibt dann nur noch eine konfigurierbare **Sicherheits-Leistung** (z.B. 150W für die Grundlast) ab, damit der Akku nicht unbemerkt in ein ladendes Auto entleert wird.
-  
+  name: "SunEnergyXT: Nulleinspeisung, Netzladung, Regelfenster & EV-Schutz (Smart & Safe)"
+  source_url: https://github.com/dagobert/homeassistant-blueprints/raw/refs/heads/stable/automations/sunenergyxt-500pro/sunenergyxt-500pro-nulleinspeisung.yaml
+  author: "CV"
   domain: automation
+  homeassistant:
+    min_version: 2024.10.0
+  description: >
+    Intelligente Nulleinspeisungsregelung für einen Batteriespeicher mit
+    steuerbarem Lade-/Entlade-Sollwert.
+
+    ## Zusammenfassung
+
+    Dieser Blueprint regelt einen Batteriespeicher so, dass am Hausanschluss
+    möglichst wenig Strom aus dem Netz bezogen oder ins Netz eingespeist wird.
+    Der Hausanschluss-Zähler dient dabei als zentrale Messgröße. Positive Werte
+    bedeuten Netzbezug, negative Werte bedeuten Einspeisung.
+
+    Die Batterie wird über eine Number-Entität gesteuert. Positive Sollwerte
+    bedeuten Entladen der Batterie ins Hausnetz, negative Sollwerte bedeuten
+    Laden der Batterie aus überschüssigem Strom.
+
+    ## Features
+
+    🔋 Automatische Lade- und Entladeregelung des Batteriespeichers
+
+    🏠 Regelung anhand des Hausanschluss-Zählers
+
+    🎯 Konfigurierbare Ziel-Netzleistung, z. B. 0 W für Nulleinspeisung
+
+    📤 Separate Toleranz für Änderungen in Richtung Laden
+
+    📥 Separate Toleranz für Änderungen in Richtung Entladen
+
+    🚗 Unterstützung für ausgenommene Verbraucher, z. B. Wallbox oder E-Auto-Lader
+
+    🛡️ SOC-Schutz mit Ladesperre und Entladesperre
+
+    🔁 Hysterese für Lade- und Entladegrenzen, damit der Akku nicht ständig an den
+    Grenzwerten pendelt
+
+    ⚡ Begrenzung des Batteriesollwerts auf eine auswählbare maximale
+    Wechselrichterleistung
+
+    🐢 Fehlerabhängige Regelgeschwindigkeit für ruhiges Verhalten bei kleinen
+    Abweichungen
+
+    🪜 Begrenzte Schrittweite pro Regelzyklus, um harte Sprünge zu vermeiden
+
+    🎚️ Schreibauflösung für den Batteriesollwert, um unnötige Mini-Änderungen zu
+    vermeiden
+
+    ⏱️ Einschwingzeit nach Sollwertänderungen, damit der Wechselrichter reagieren
+    kann, bevor erneut geregelt wird
+
+    🚨 Fail-Safe bei Ausfall des Hausanschluss-Zählers: Der Batteriesollwert wird
+    sofort auf 0 W gesetzt und die Automation beendet
+
+    🛑 Fail-Safe beim Herunterfahren von Home Assistant: Der Batteriesollwert kann
+    vor dem Shutdown auf 0 W gesetzt werden
+
+    ## Funktionsweise
+
+    Der Blueprint überwacht den Leistungswert am Hausanschluss. Aus diesem Wert
+    und dem aktuell gesetzten Batteriesollwert wird zurückgerechnet, wie der
+    Netzfluss ohne den aktuellen Batterieeingriff aussehen würde.
+
+    Daraus wird ein neuer Ziel-Sollwert für die Batterie berechnet.
+
+    Ist ohne Batterie ein Überschuss vorhanden, darf die Batterie laden. In diesem
+    Fall wird der Lade-Sollwert aus dem echten Überschuss ohne Batterie berechnet.
+    Ausgenommene Verbraucher haben auf das Laden keinen Einfluss. Dadurch wird
+    verhindert, dass z. B. eine Wallbox künstlich ein Laden der Batterie auslöst.
+
+    Ist ohne Batterie Netzbezug vorhanden, darf die Batterie entladen. Dabei
+    werden die ausgenommenen Verbraucher abgezogen. So kann verhindert werden,
+    dass große Verbraucher wie ein E-Auto-Lader aus der Batterie versorgt werden.
+
+    Der berechnete Ziel-Sollwert wird anschließend durch mehrere Schutz- und
+    Beruhigungsstufen geführt:
+
+    1. SOC-Sperren:
+       Wenn der Akku voll ist, wird Laden verhindert.
+       Wenn der Akku leer ist, wird Entladen verhindert.
+
+    2. Maximaler Sollwert:
+       Der Sollwert wird symmetrisch auf den eingestellten Maximalwert begrenzt.
+
+    3. Regelfenster:
+       Kleine Änderungen um den aktuellen Batteriesollwert herum werden ignoriert,
+       damit nicht bei jeder kleinen Schwankung geschrieben wird.
+
+    4. Fehlerabhängige Geschwindigkeit:
+       Kleine Abweichungen werden langsamer geregelt, große Abweichungen schneller.
+
+    5. Schrittweitenbegrenzung:
+       Der Sollwert wird nicht beliebig stark auf einmal verändert, sondern nur
+       bis zur eingestellten maximalen Schrittweite.
+
+    6. Schreibauflösung:
+       Der Wert wird auf eine einstellbare Schrittweite gerundet, z. B. 10 W.
+
+    7. Einschwingzeit:
+       Nach jedem Schreibvorgang wird gewartet, bis genügend Zeit vergangen ist
+       und ein neuer Messwert vom Hausanschluss-Zähler vorliegt.
+
+    Erst wenn alle Bedingungen erfüllt sind, wird ein neuer Batteriesollwert
+    geschrieben.
+
+    ## Vorzeichenkonvention
+
+    Hausanschluss-Zähler:
+
+    - Positiv = Netzbezug
+    - Negativ = Einspeisung
+
+    Batteriesollwert:
+
+    - Positiv = Batterie entlädt ins Hausnetz
+    - Negativ = Batterie lädt
+
+    Ausgenommene Verbraucher:
+
+    - Immer positiv
+    - Werden nur im Entladefall berücksichtigt
+    - Dürfen niemals eine Batterieladung auslösen
+
+    ## Hinweise zur Einrichtung
+
+    Für die SOC-Hysterese werden zwei Input-Boolean-Helfer benötigt:
+
+    - Ladesperre
+    - Entladesperre
+
+    Diese speichern den aktuellen Sperrzustand dauerhaft und verhindern, dass der
+    Akku direkt nach Erreichen einer Lade- oder Entladegrenze wieder gegen diese
+    Grenze geregelt wird.
+
+    Beispiel:
+
+    Akku voll bei 90 %, Freigabe Laden 5 %:
+
+    - Ab 90 % wird Laden gesperrt
+    - Erst bei 85 % wird Laden wieder erlaubt
+
+    Akku leer bei 15 %, Freigabe Entladen 5 %:
+
+    - Ab 15 % wird Entladen gesperrt
+    - Erst bei 20 % wird Entladen wieder erlaubt
+
+    ## Empfohlene Startwerte
+
+    Für eine schnelle, aber noch stabile Regelung sind folgende Werte ein guter
+    Ausgangspunkt:
+
+    - Einschwingzeit nach Sollwertänderung: 3 s
+    - Langsames Schreibintervall: 3 s
+    - Mittleres Schreibintervall: 2 s
+    - Schnelles Schreibintervall: 1 s
+    - Max. Schritt bei kleinem Fehler: 40 W
+    - Max. Schritt bei mittlerem Fehler: 120 W
+    - Max. Schritt bei großem Fehler: 450 W
+    - Schreibauflösung: 10 W
+    - Toleranz Einspeisung: 5 W
+    - Toleranz Netzbezug: 10 W
+
+    Falls die Regelung noch zu träge reagiert, können Einschwingzeit und langsames
+    Schreibintervall vorsichtig reduziert werden. Falls die Regelung pendelt oder
+    zu häufig schreibt, sollten Einschwingzeit, Schreibintervalle oder
+    Schrittweiten beruhigender eingestellt werden.
+
+
   input:
-    main_power_meter:
-      name: "📊 Hauptstromzähler (Power)"
-      description: "Der Leistungssensor Ihres Hauptzählers (Taktgeber für die Echtzeit-Regelung. Positiv bei Bezug, negativ bei Einspeisung)."
-      selector:
-        entity:
-          filter:
-            - domain: sensor
+
+    # ------------------------------------------------------------
+    # 1. NETZ + MESSWERTE
+    # ------------------------------------------------------------
+    grid_section:
+      name: 🏠 Netz & Messwerte
+      description: >
+        Hauptmesspunkt und zu ignorierende Verbraucher.
+        Der Netzfluss bestimmt die Regelentscheidung.
+      input:
+
+        grid_power:
+          name: ⚡ Hausanschluss Leistung
+          description: >
+            Leistung am Netzanschlusspunkt.
+            Positiv = Netzbezug, Negativ = Einspeisung.
+          selector:
+            entity:
+              domain: sensor
               device_class: power
-    battery_soc:
-      name: "🔋 Speicher Ladestand (SoC)"
-      description: "Der Prozent-Sensor für den aktuellen Ladestand des SunEnergyXT Speichers."
-      selector:
-        entity:
-          filter:
-            - domain: sensor
+
+        ignored_loads:
+          name: 🚗 Ausgenommene Verbraucher
+          description: >
+            Liste von Verbrauchern, die NICHT in die Regelung einfließen
+            (z. B. E-Auto, Wallbox).
+          default: []
+          selector:
+            entity:
+              domain: sensor
+              device_class: power
+              multiple: true
+        
+        battery_power_actual:
+          name: "⚡ Batterie Leistung"
+          description: >
+            Aktuelle tatsächliche Lade- oder Entladeleistung des Batteriespeichers.
+            Positive Werte bedeuten Entladen, negative Werte Laden.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: power
+
+    # ------------------------------------------------------------
+    # 2. REGELUNG + BATTERIE
+    # ------------------------------------------------------------
+    control_section:
+      name: 🔋 Batterie & Regelung
+      description: >
+        Steuerung der Batterie und Regelparameter.
+      input:
+
+        battery_charge_discharge_setpoint:
+          name: 🔋 Batteriesollwert
+          description: >
+            Number-Entität zur Steuerung der Lade-/Entladeleistung.
+            Positiv = Entladen, Negativ = Laden.
+          selector:
+            entity:
+              domain: number
+
+        max_battery_charge_discharge_setpoint:
+          name: ⚡ Max. Sollwert
+          description: >
+            Begrenzung des Batteriesollwerts (symmetrisch).
+            Wird als ±Grenze für alle Berechnungen verwendet.
+          selector:
+            entity:
+              domain: number
+
+# GGF window inputs hier und in logic entfernen
+        window_feed_in:
+          name: 📤 Toleranz Einspeisung
+          description: >
+            Negativer Bereich des Totbands.
+            Größerer Wert = mehr erlaubte Einspeisung bevor Regelung greift.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 30
+              unit_of_measurement: W
+
+        window_grid_draw:
+          name: 📥 Toleranz Netzbezug
+          description: >
+            Positiver Bereich des Totbands.
+            Größerer Wert = mehr erlaubter Netzbezug bevor Regelung greift.
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 30
+              unit_of_measurement: W
+
+        target_grid_power_w:
+          name: 🎯 Ziel-Netzleistung
+          description: >
+            Zielwert am Hausanschluss. 0 W bedeutet Nulleinspeisung.
+            Positive Werte halten bewusst eine kleine Einspeisung.
+            Negative Werte halten bewusst einen kleinen Netzbezug.
+          default: 0
+          selector:
+            number:
+              min: -200
+              max: 200
+              step: 1
+              unit_of_measurement: W
+              mode: box
+
+        feedback_settle_s:
+          name: ⏱️ Einschwingzeit nach Sollwertänderung
+          description: >
+            Mindestzeit nach dem Schreiben des Batteriesollwerts, bevor erneut
+            ein neuer Sollwert geschrieben werden darf. Zusätzlich muss nach der
+            letzten Sollwertänderung ein neuer Wert vom Hausanschluss-Zähler
+            angekommen sein. Das reduziert Schwingen durch verzögerte
+            Rückmeldungen des Wechselrichters.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 30
+              step: 1
+              unit_of_measurement: s
+              mode: box
+
+        small_error_w:
+          name: 🐢 Schwelle kleiner Fehler
+          description: >
+            Bis zu dieser Sollwertabweichung wird nur langsam nachgeregelt.
+            Kleine Fehler entstehen oft durch normale Messwertschwankungen.
+          default: 30
+          selector:
+            number:
+              min: 1
+              max: 300
+              step: 1
+              unit_of_measurement: W
+              mode: box
+
+        large_error_w:
+          name: ⚡ Schwelle großer Fehler
+          description: >
+            Ab dieser Sollwertabweichung wird schnell geregelt.
+            Werte zwischen kleinem und großem Fehler verwenden das mittlere Intervall.
+          default: 150
+          selector:
+            number:
+              min: 10
+              max: 1000
+              step: 10
+              unit_of_measurement: W
+              mode: box
+
+        slow_interval_s:
+          name: 🐢 Langsames Schreibintervall
+          description: >
+            Mindestzeit zwischen zwei Sollwertänderungen bei kleinen Abweichungen.
+          default: 7
+          selector:
+            number:
+              min: 1
+              max: 120
+              step: 0.5
+              unit_of_measurement: s
+              mode: box
+
+        medium_interval_s:
+          name: 🚶 Mittleres Schreibintervall
+          description: >
+            Mindestzeit zwischen zwei Sollwertänderungen bei mittleren Abweichungen.
+          default: 2.5
+          selector:
+            number:
+              min: 0.5
+              max: 60
+              step: 0.5
+              unit_of_measurement: s
+              mode: box
+
+        fast_interval_s:
+          name: ⚡ Schnelles Schreibintervall
+          description: >
+            Mindestzeit zwischen zwei Sollwertänderungen bei großen Abweichungen.
+          default: 1
+          selector:
+            number:
+              min: 0.5
+              max: 20
+              step: 0.5
+              unit_of_measurement: s
+              mode: box
+
+        small_max_step_w:
+          name: 🐢 Max. Schritt bei kleinem Fehler
+          description: >
+            Maximale Änderung des Batteriesollwerts pro Schreibvorgang bei kleinen Abweichungen.
+            Kleine Werte beruhigen die Regelung.
+          default: 20
+          selector:
+            number:
+              min: 1
+              max: 300
+              step: 1
+              unit_of_measurement: W
+              mode: box
+
+        medium_max_step_w:
+          name: 🚶 Max. Schritt bei mittlerem Fehler
+          description: >
+            Maximale Änderung des Batteriesollwerts pro Schreibvorgang bei mittleren Abweichungen.
+          default: 120
+          selector:
+            number:
+              min: 10
+              max: 1000
+              step: 10
+              unit_of_measurement: W
+              mode: box
+
+        fast_max_step_w:
+          name: ⚡ Max. Schritt bei großem Fehler
+          description: >
+            Maximale Änderung des Batteriesollwerts pro Schreibvorgang bei großen Abweichungen.
+            Höhere Werte reagieren schneller, können aber stärker schwingen.
+          default: 450
+          selector:
+            number:
+              min: 50
+              max: 2400
+              step: 10
+              unit_of_measurement: W
+              mode: box
+
+        setpoint_resolution_w:
+          name: 🎚️ Schreibauflösung Batteriesollwert
+          description: >
+            Rundet den Batteriesollwert vor dem Schreiben auf diese Schrittweite.
+            Beispiel: 10 W schreibt nur Werte wie 0, 10, 20, -10, -20.
+            Das reduziert unnötige Mini-Änderungen und beruhigt die Regelung.
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 100
+              step: 1
+              unit_of_measurement: W
+              mode: box
+
+    # ------------------------------------------------------------
+    # 3. BATTERIEZUSTAND + SICHERHEIT
+    # ------------------------------------------------------------
+    safety_section:
+      name: 🛡️ Batterie Schutz & Sicherheit
+      description: >
+        SOC-Grenzen mit Hysterese und Fail-Safe Verhalten.
+      input:
+
+        soc_sensor:
+          name: 🔋 Ladezustand Batterie
+          description: >
+            Aktueller Ladezustand der Batterie in %.
+          selector:
+            entity:
+              domain: sensor
               device_class: battery
-    wallbox_power:
-      name: "🚗 Wallbox Leistung (Power)"
-      description: "Der Leistungssensor Ihres Elektroauto-Laders / Ihrer Wallbox."
-      selector:
-        entity:
-          filter:
-            - domain: sensor
-              device_class: power
-    charge_helper:
-      name: "🔓 Helfer: Freigabe Netzladung"
-      description: "Ein manuell erstellter 'Schalter' (input_boolean) zur Steuerung der Lade-Hysterese."
-      selector:
-        entity:
-          filter:
-            - domain: input_boolean
-    discharge_helper:
-      name: "🔓 Helfer: Freigabe Entladung"
-      description: "Ein manuell erstellter 'Schalter' (input_boolean) zur Steuerung des Tiefentladeschutzes."
-      selector:
-        entity:
-          filter:
-            - domain: input_boolean
-    ac_output_limit_entity:
-      name: "⚡ Entität: AC Ausgangslimit (Entladen)"
-      description: "Die Nummer-Entität des SunEnergyXT zur Steuerung des Ausgangslimits."
-      selector:
-        entity:
-          filter:
-            - domain: number
-    ac_charge_power_entity:
-      name: "🔌 Entität: AC Ladeleistung (Netzladen)"
-      description: "Die Nummer-Entität des SunEnergyXT zur Steuerung der AC-Netzladeleistung."
-      selector:
-        entity:
-          filter:
-            - domain: number
-    max_discharge_power:
-      name: "🚀 Maximale Entladeleistung"
-      description: "Die maximale Leistung (in Watt), mit der der Speicher das Hausnetz im Normalbetrieb unterstützen darf."
-      default: 2400
-      selector:
-        number:
-          min: 0
-          max: 2400
-          unit_of_measurement: W
-          mode: box
-    max_discharge_safe_power:
-      name: "🛡️ Sicherheits-Entladeleistung (Wallbox-Ausfall)"
-      description: "Maximale Entladeleistung (in Watt), wenn der Wallbox-Sensor offline ist. Deckt im Idealfall nur Ihre Grundlast (z.B. 150W) ab."
-      default: 150
-      selector:
-        number:
-          min: 0
-          max: 1000
-          unit_of_measurement: W
-          mode: box
-    max_charge_power:
-      name: "📥 Maximale AC-Ladeleistung"
-      description: "Die maximale Leistung (in Watt), mit der der Speicher via AC aus dem Netz (Überschuss der Altanlage) geladen werden darf."
-      default: 2400
-      selector:
-        number:
-          min: 0
-          max: 2400
-          unit_of_measurement: W
-          mode: box
-    wallbox_standby_threshold:
-      name: "💤 Wallbox Standby-Schwelle"
-      description: "Leistungen unter diesem Wert (in Watt) werden als Standby interpretiert und nicht vom Hausverbrauch abgezogen."
-      default: 10
-      selector:
-        number:
-          min: 0
-          max: 100
-          unit_of_measurement: W
-          mode: box
-    soc_charge_stop:
-      name: "⏹️ Netzladung stoppen bei SoC"
-      description: "Obere Ladegrenze, bei welcher die AC-Netzladung beendet wird."
-      default: 100
-      selector:
-        number:
-          min: 50
-          max: 100
-          unit_of_measurement: "%"
-          mode: slider
-    soc_charge_start:
-      name: "▶️ Netzladung wieder erlauben bei SoC"
-      description: "Erst wenn der Akku nach der Vollladung unter diesen Prozentwert fällt, wird die Netzladung wieder freigegeben."
-      default: 90
-      selector:
-        number:
-          min: 40
-          max: 99
-          unit_of_measurement: "%"
-          mode: slider
-    soc_discharge_stop:
-      name: "🛑 Entladen stoppen bei SoC"
-      description: "Untere Entladegrenze (Tiefentladeschutz), bei welcher der Speicher über Home Assistant weggeschaltet wird."
-      default: 10
-      selector:
-        number:
-          min: 0
-          max: 30
-          unit_of_measurement: "%"
-          mode: slider
-    soc_discharge_start:
-      name: "🔄 Entladen wieder erlauben bei SoC"
-      description: "Nach Erreichen des Tiefentladeschutzes muss der Akku erst wieder über diesen Wert steigen, um entladen zu dürfen."
-      default: 15
-      selector:
-        number:
-          min: 5
-          max: 40
-          unit_of_measurement: "%"
-          mode: slider
 
-mode: restart
+        soc_full:
+          name: 🔼 Akku voll bei
+          description: >
+            Number-Entität, die den SOC-Wert definiert, ab dem das Laden gestoppt wird.
+            Wird dynamisch aus einer Entität gelesen (kein fixer Wert).
+          selector:
+            entity:
+              domain: number
+
+        soc_full_release:
+          name: ↘️ Freigabe Laden
+          description: >
+            Hysterese unterhalb von "voll", ab wann wieder geladen werden darf.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 20
+
+        soc_empty:
+          name: 🔽 Akku leer bei
+          description: >
+            Number-Entität, die den SOC-Wert definiert, ab dem das Entladen gestoppt wird.
+            Wird dynamisch aus einer Entität gelesen (kein fixer Wert).
+          selector:
+            entity:
+              domain: number
+
+        soc_empty_release:
+          name: ↗️ Freigabe Entladen
+          description: >
+            Hysterese oberhalb von "leer", ab wann wieder entladen werden darf.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 20
+
+        lock_charge:
+          name: 🔒 Ladesperre
+          description: >
+            Hilfs-Boolean zur Speicherung der Ladesperre.
+          selector:
+            entity:
+              domain: input_boolean
+
+        lock_discharge:
+          name: 🔓 Entladesperre
+          description: >
+            Hilfs-Boolean zur Speicherung der Entladesperre.
+          selector:
+            entity:
+              domain: input_boolean
 
 trigger:
   - platform: state
-    entity_id: !input main_power_meter
+    entity_id: !input grid_power
+    not_to:
+      - unavailable
+      - unknown
+    id: grid_update
 
-variables:
-  main_meter: !input main_power_meter
-  wb_power: !input wallbox_power
-  bat_soc: !input battery_soc
-  ac_out_entity: !input ac_output_limit_entity
-  ac_chg_entity: !input ac_charge_power_entity
-  chg_helper: !input charge_helper
-  dischg_helper: !input discharge_helper
-  wb_threshold: !input wallbox_standby_threshold
-  max_out: !input max_discharge_power
-  max_out_safe: !input max_discharge_safe_power
-  max_chg: !input max_charge_power
-  cfg_soc_chg_stop: !input soc_charge_stop
-  cfg_soc_chg_start: !input soc_charge_start
-  cfg_soc_dischg_stop: !input soc_discharge_stop
-  cfg_soc_dischg_start: !input soc_discharge_start
+  - platform: state
+    entity_id: !input soc_sensor
+    id: soc_update
 
-action:
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ states(main_meter) in ['unavailable', 'unknown'] }}"
-        sequence:
-          - service: number.set_value
-            target:
-              entity_id: !input ac_output_limit_entity
-            data:
-              value: 0
-          - service: number.set_value
-            target:
-              entity_id: !input ac_charge_power_entity
-            data:
-              value: 0
-          - stop: "Hauptzähler ausgefallen! Not-Aus wurde aktiviert."
+  - platform: state
+    entity_id: !input grid_power
+    to:
+      - unavailable
+      - unknown
+    id: grid_failed
 
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) >= (cfg_soc_chg_stop | float - 0.1) }}"
-        sequence:
-          - service: input_boolean.turn_off
-            target:
-              entity_id: !input charge_helper
-      - conditions:
-          - condition: template
-            value_template: "{{ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) < cfg_soc_chg_start | float }}"
-        sequence:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: !input charge_helper
-
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) <= cfg_soc_dischg_stop | float }}"
-        sequence:
-          - service: input_boolean.turn_off
-            target:
-              entity_id: !input discharge_helper
-      - conditions:
-          - condition: template
-            value_template: "{{ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) > cfg_soc_dischg_start | float }}"
-        sequence:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: !input discharge_helper
-
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ states(dischg_helper) == 'on' }}"
-          - condition: template
-            value_template: >-
-              {% set hauptzaehler = states(main_meter) | float(0) %}
-              {% set wallbox_status = states(wb_power) %}
-              {% set wallbox = states(wb_power) | float(0) if wallbox_status not in ['unavailable', 'unknown'] and states(wb_power) | float(0) >= (wb_threshold | float) else 0 %}
-              {{ (hauptzaehler - wallbox) > 10 }}
-        sequence:
-          - service: number.set_value
-            target:
-              entity_id: !input ac_charge_power_entity
-            data:
-              value: 0
-          - service: number.set_value
-            target:
-              entity_id: !input ac_output_limit_entity
-            data:
-              value: >-
-                {% set aktueller_ausgang = states(ac_out_entity) | float(0) %}
-                {% set hauptzaehler = states(main_meter) | float(0) %}
-                {% set wallbox_status = states(wb_power) %}
-                {% if wallbox_status in ['unavailable', 'unknown'] %}
-                  {% set limit = max_out_safe | float %}
-                  {% set haus_netzbezug = hauptzaehler %}
-                {% else %}
-                  {% set limit = max_out | float %}
-                  {% set wallbox = states(wb_power) | float(0) if states(wb_power) | float(0) >= (wb_threshold | float) else 0 %}
-                  {% set haus_netzbezug = hauptzaehler - wallbox %}
-                {% endif %}
-                {% set neuer_wert = aktueller_ausgang + haus_netzbezug %}
-                {{ [neuer_wert, limit] | min | max(0) }}
-
-      - conditions:
-          - condition: template
-            value_template: "{{ states(main_meter) | float(0) < -10 }}"
-          - condition: template
-            value_template: "{{ states(chg_helper) == 'on' }}"
-        sequence:
-          - service: number.set_value
-            target:
-              entity_id: !input ac_output_limit_entity
-            data:
-              value: 0
-          - service: number.set_value
-            target:
-              entity_id: !input ac_charge_power_entity
-            data:
-              value: >-
-                {% set aktuelle_ladung = states(ac_chg_entity) | float(0) %}
-                {% set ueberschuss = states(main_meter) | float(0) | abs %}
-                {% set neuer_wert = aktuelle_ladung + ueberschuss %}
-                {{ [neuer_wert, max_chg | float] | min | max(0) }}
-
-      - conditions:
-          - condition: template
-            value_template: "true"
-        sequence:
-          - service: number.set_value
-            target:
-              entity_id: !input ac_output_limit_entity
-            data:
-              value: 0
-          - service: number.set_value
-            target:
-              entity_id: !input ac_charge_power_entity
-            data:
-              value: 0
-    # --- GRENZWERTE UND OPTIONEN ---
-    max_discharge_power:
-      name: "🚀 Maximaler Entladestrom"
-      description: "Geben Sie hier das positive Limit (in Watt) für die maximale Abgabe ins Hausnetz ein."
-      default: 2400
-      selector:
-        number:
-          min: 0
-          max: 2400
-          unit_of_measurement: W
-          mode: box
-
-    max_discharge_safe_power:
-      name: "🛡️ Sicherheits-Entladung (Wallbox-Ausfall)"
-      description: "Maximale Entladung (z.B. Grundlast 150W), wenn der Wallbox-Sensor offline ist."
-      default: 150
-      selector:
-        number:
-          min: 0
-          max: 1000
-          unit_of_measurement: W
-          mode: box
-
-    max_charge_power:
-      name: "📥 Maximaler Ladestrom"
-      description: "Geben Sie hier das positive Limit (in Watt) für das maximale Laden aus dem Netz ein (wird intern automatisch negativ umgerechnet)."
-      default: 2400
-      selector:
-        number:
-          min: 0
-          max: 2400
-          unit_of_measurement: W
-          mode: box
-
-    wallbox_standby_threshold:
-      name: "💤 Wallbox Standby-Schwelle"
-      description: "Leistungen unter diesem Wert (in Watt) werden als Standby ignoriert."
-      default: 10
-      selector:
-        number:
-          min: 0
-          max: 100
-          unit_of_measurement: W
-          mode: box
-
-    soc_charge_stop:
-      name: "⏹️ Netzladung stoppen bei SoC"
-      default: 100
-      selector:
-        number:
-          min: 50
-          max: 100
-          unit_of_measurement: "%"
-          mode: slider
-
-    soc_charge_start:
-      name: "▶️ Netzladung wieder erlauben bei SoC"
-      default: 90
-      selector:
-        number:
-          min: 40
-          max: 99
-          unit_of_measurement: "%"
-          mode: slider
-
-    soc_discharge_stop:
-      name: "🛑 Entladen stoppen bei SoC"
-      default: 10
-      selector:
-        number:
-          min: 0
-          max: 30
-          unit_of_measurement: "%"
-          mode: slider
-
-    soc_discharge_start:
-      name: "🔄 Entladen wieder erlauben bei SoC"
-      default: 15
-      selector:
-        number:
-          min: 5
-          max: 40
-          unit_of_measurement: "%"
-          mode: slider
+  - platform: homeassistant
+    event: shutdown
+    id: homeassistant_shutdown
 
 mode: restart
 
-trigger:
-  - platform: state
-    entity_id: !input main_power_meter
 variables:
-  main_meter: !input main_power_meter
-  wb_power: !input wallbox_power
-  bat_soc: !input battery_soc
-  comb_entity: !input combined_power_entity
-  chg_helper: !input charge_helper
-  dischg_helper: !input discharge_helper
-  
-  wb_threshold: !input wallbox_standby_threshold
-  max_out: !input max_discharge_power
-  max_out_safe: !input max_discharge_safe_power
-  max_chg: !input max_charge_power
-  
-  cfg_soc_chg_stop: !input soc_charge_stop
-  cfg_soc_chg_start: !input soc_charge_start
-  cfg_soc_dischg_stop: !input soc_discharge_stop
-  cfg_soc_dischg_start: !input soc_discharge_start
+
+  # -------------------------------------------------
+  # 🧩 Input-Aliase
+  # -------------------------------------------------
+  input_grid_power: !input grid_power
+  input_battery_power_actual: !input battery_power_actual
+  input_ignored_loads: !input ignored_loads
+
+  input_window_feed_in: !input window_feed_in
+  input_window_grid_draw: !input window_grid_draw
+
+  input_target_grid_power_w: !input target_grid_power_w
+  input_feedback_settle_s: !input feedback_settle_s
+  input_small_error_w: !input small_error_w
+  input_large_error_w: !input large_error_w
+  input_slow_interval_s: !input slow_interval_s
+  input_medium_interval_s: !input medium_interval_s
+  input_fast_interval_s: !input fast_interval_s
+
+  input_small_max_step_w: !input small_max_step_w
+  input_medium_max_step_w: !input medium_max_step_w
+  input_fast_max_step_w: !input fast_max_step_w
+
+  input_setpoint_resolution_w: !input setpoint_resolution_w
+
+  input_battery_charge_discharge_setpoint: !input battery_charge_discharge_setpoint
+  input_max_battery_charge_discharge_setpoint: !input max_battery_charge_discharge_setpoint
+
+  input_soc_sensor: !input soc_sensor
+  input_soc_full: !input soc_full
+  input_soc_full_release: !input soc_full_release
+  input_soc_empty: !input soc_empty
+  input_soc_empty_release: !input soc_empty_release
+
+  input_lock_charge: !input lock_charge
+  input_lock_discharge: !input lock_discharge
+
+
+  # -------------------------------------------------
+  # 🏠 Netz & Messwerte
+  # -------------------------------------------------
+  grid_power_draw: "{{ states(input_grid_power) | float(0) }}"
+
+  # Nur zu DEBUG Zwecke
+  battery_power_actual: "{{ states(input_battery_power_actual) | float(0) }}"
+
+  ignored_power_draw: >
+    {% set ns = namespace(total=0) %}
+    {% for e in expand(input_ignored_loads) %}
+      {% set ns.total = ns.total + (e.state | float(0)) %}
+    {% endfor %}
+    {{ ns.total }}
+
+
+  # -------------------------------------------------
+  # 📥 / 📤 Regelfenster
+  # -------------------------------------------------
+  window_feed_in: "{{ input_window_feed_in | float(0) }}"
+  window_grid_draw: "{{ input_window_grid_draw | float(0) }}"
+
+  target_grid_power_w: "{{ input_target_grid_power_w | float(0) }}"
+
+  # Interne Darstellung passend zu grid_power_draw:
+  # grid_power_draw: positiv = Netzbezug, negativ = Einspeisung
+  # target_grid_power_w: positiv = gewünschte Einspeisung, negativ = gewünschter Bezug
+  target_grid_power_draw: "{{ (target_grid_power_w | float(0)) * -1 }}"
+
+  # -------------------------------------------------
+  # 🔋 Batterie Steuerung
+  # -------------------------------------------------
+  current_battery_charge_discharge_setpoint: >
+    {{ states(input_battery_charge_discharge_setpoint) | float(0) }}
+
+  max_battery_charge_discharge_setpoint: >
+    {{ states(input_max_battery_charge_discharge_setpoint) | float(0) }}
+
+
+  # -------------------------------------------------
+  # 🔋 SOC & Grenzen
+  # -------------------------------------------------
+  soc: "{{ states(input_soc_sensor) | float(0) }}"
+
+  soc_full: "{{ states(input_soc_full) | float(0) }}"
+  soc_full_release: "{{ input_soc_full_release | float(0) }}"
+
+  soc_empty: "{{ states(input_soc_empty) | float(0) }}"
+  soc_empty_release: "{{ input_soc_empty_release | float(0) }}"
+
+
+  # -------------------------------------------------
+  # 🔒 Hysterese Speicher
+  # -------------------------------------------------
+  is_charge_locked: "{{ is_state(input_lock_charge, 'on') }}"
+  is_discharge_locked: "{{ is_state(input_lock_discharge, 'on') }}"
+
+  # -------------------------------------------------
+  # 🔒 Effektive Sperren für diesen Regellauf
+  # -------------------------------------------------
+  effective_charge_locked: >
+    {% if soc >= soc_full %}
+      true
+    {% elif soc <= (soc_full - soc_full_release) %}
+      false
+    {% else %}
+      {{ is_charge_locked }}
+    {% endif %}
+
+  effective_discharge_locked: >
+    {% if soc <= soc_empty %}
+      true
+    {% elif soc >= (soc_empty + soc_empty_release) %}
+      false
+    {% else %}
+      {{ is_discharge_locked }}
+    {% endif %}
+
+  # -------------------------------------------------
+  # ⏱️ Einschwingzeit / Rückmeldung
+  # -------------------------------------------------
+  feedback_settle_s: "{{ input_feedback_settle_s | float(5) }}"
+
+  battery_setpoint_last_changed_ts: >
+    {% set s = states[input_battery_charge_discharge_setpoint] %}
+    {{ as_timestamp(s.last_changed, 0) if s is not none else 0 }}
+
+  grid_power_last_updated_ts: >
+    {% set s = states[input_grid_power] %}
+    {{ as_timestamp(s.last_updated, 0) if s is not none else 0 }}
+
+  seconds_since_battery_setpoint_change: >
+    {{ as_timestamp(now()) - (battery_setpoint_last_changed_ts | float(0)) }}
+
+  has_grid_sample_after_setpoint_change: >
+    {{
+      (grid_power_last_updated_ts | float(0))
+      > (battery_setpoint_last_changed_ts | float(0))
+    }}
+
+  # Nur zu DEBUG Zwecke
+  is_feedback_settled: >
+    {{
+      (seconds_since_battery_setpoint_change | float(0)) >= (feedback_settle_s | float(5))
+      and has_grid_sample_after_setpoint_change
+    }}
+
+
+  # -------------------------------------------------
+  # 🧮 Basiswerte für die Regelung
+  # -------------------------------------------------
+
+  # Hinweis:
+  # battery_power_actual bleibt als Messwert erhalten, wird aber aktuell nicht
+  # für die schnelle Regelung genutzt.
+  #
+  # ignored_power_draw wirkt nur im Entladefall.
+  # Beim Laden wird ausschließlich target_adjusted_grid_power_without_battery verwendet.
+  grid_power_without_battery: >
+    {{ grid_power_draw + current_battery_charge_discharge_setpoint }}
+
+  net_power_without_battery: >
+    {{ grid_power_without_battery - ignored_power_draw }}
+
+
+  # -------------------------------------------------
+  # 🎯 Ziel-Sollwert ohne Dämpfung
+  # -------------------------------------------------
+
+  target_adjusted_grid_power_without_battery: >
+    {{ (grid_power_without_battery | float(0)) - (target_grid_power_draw | float(0)) }}
+
+  target_adjusted_net_power_without_battery: >
+    {{ (target_adjusted_grid_power_without_battery | float(0)) - (ignored_power_draw | float(0)) }}
+
+  # Basis-Sollwert:
+  # - Laden nur bei echtem Überschuss ohne Batterie
+  # - ignored_loads beeinflussen nur die Entladung
+  base_new_battery_charge_discharge_setpoint: >
+    {% if target_adjusted_grid_power_without_battery < 0 %}
+      {{ target_adjusted_grid_power_without_battery }}
+    {% else %}
+      {{ [target_adjusted_net_power_without_battery, 0] | max }}
+    {% endif %}
+
+  lock_limited_battery_charge_discharge_setpoint: >
+    {% set v = base_new_battery_charge_discharge_setpoint | float(0) %}
+    {% if (effective_charge_locked | bool(false)) and v < 0 %}
+      0
+    {% elif (effective_discharge_locked | bool(false)) and v > 0 %}
+      0
+    {% else %}
+      {{ v }}
+    {% endif %}
+
+  new_battery_charge_discharge_setpoint: >
+    {% set v = lock_limited_battery_charge_discharge_setpoint | float(0) %}
+    {% set m = max_battery_charge_discharge_setpoint | float(0) %}
+    {{ [[v, -m] | max, m] | min | round(0) }}
+
+
+  # -------------------------------------------------
+  # 📐 Regelfenster um aktuellen Sollwert
+  # -------------------------------------------------
+  is_new_setpoint_inside_window: >
+    {{
+      (new_battery_charge_discharge_setpoint | float(0))
+        >= ((current_battery_charge_discharge_setpoint | float(0)) - (window_feed_in | float(0)))
+      and
+      (new_battery_charge_discharge_setpoint | float(0))
+        <= ((current_battery_charge_discharge_setpoint | float(0)) + (window_grid_draw | float(0)))
+    }}
+
+  should_set_new_battery_charge_discharge_setpoint: >
+    {{ not (is_new_setpoint_inside_window | bool(false)) }}
+
+
+  # -------------------------------------------------
+  # ⏱️ Fehlerabhängige Regelgeschwindigkeit
+  # -------------------------------------------------
+  small_error_w: "{{ input_small_error_w | float(30) }}"
+  large_error_w: "{{ input_large_error_w | float(150) }}"
+
+  slow_interval_s: "{{ input_slow_interval_s | float(7) }}"
+  medium_interval_s: "{{ input_medium_interval_s | float(2.5) }}"
+  fast_interval_s: "{{ input_fast_interval_s | float(1) }}"
+
+  setpoint_error_w: >
+    {{
+      (new_battery_charge_discharge_setpoint | float(0))
+      - (current_battery_charge_discharge_setpoint | float(0))
+    }}
+
+  setpoint_error_abs_w: >
+    {{ (setpoint_error_w | float(0)) | abs }}
+
+  control_speed_bucket: >
+    {% set e = setpoint_error_abs_w | float(0) %}
+    {% if e <= (small_error_w | float(30)) %}
+      small
+    {% elif e >= (large_error_w | float(150)) %}
+      large
+    {% else %}
+      medium
+    {% endif %}
+
+  dynamic_control_interval_s: >
+    {% set bucket = control_speed_bucket | trim %}
+    {% if bucket == 'small' %}
+      {{ slow_interval_s | float(7) }}
+    {% elif bucket == 'large' %}
+      {{ fast_interval_s | float(1) }}
+    {% else %}
+      {{ medium_interval_s | float(2.5) }}
+    {% endif %}
+
+  required_control_interval_s: >
+    {{ [feedback_settle_s | float(5), dynamic_control_interval_s | float(2.5)] | max }}
+
+  is_control_interval_elapsed: >
+    {{
+      (seconds_since_battery_setpoint_change | float(0))
+      >= (required_control_interval_s | float(5))
+    }}
+
+
+  # -------------------------------------------------
+  # 🪜 Schrittweitenbegrenzung
+  # -------------------------------------------------
+  small_max_step_w: "{{ input_small_max_step_w | float(20) }}"
+  medium_max_step_w: "{{ input_medium_max_step_w | float(120) }}"
+  fast_max_step_w: "{{ input_fast_max_step_w | float(450) }}"
+
+  max_step_w: >
+    {% set bucket = control_speed_bucket | trim %}
+    {% if bucket == 'small' %}
+      {{ small_max_step_w | float(20) }}
+    {% elif bucket == 'large' %}
+      {{ fast_max_step_w | float(450) }}
+    {% else %}
+      {{ medium_max_step_w | float(120) }}
+    {% endif %}
+
+  limited_setpoint_delta_w: >
+    {% set delta = setpoint_error_w | float(0) %}
+    {% set step = max_step_w | float(120) %}
+    {% if delta > step %}
+      {{ step }}
+    {% elif delta < (step * -1) %}
+      {{ step * -1 }}
+    {% else %}
+      {{ delta }}
+    {% endif %}
+
+
+  # -------------------------------------------------
+  # 🎚️ Schreibauflösung
+  # -------------------------------------------------
+  setpoint_resolution_w: >
+    {{ [input_setpoint_resolution_w | float(10), 1] | max }}
+
+
+  # -------------------------------------------------
+  # 🔋 Nächster tatsächlich zu schreibender Sollwert
+  # -------------------------------------------------
+  next_battery_charge_discharge_setpoint: >
+    {% set current = current_battery_charge_discharge_setpoint | float(0) %}
+    {% set delta = limited_setpoint_delta_w | float(0) %}
+    {% set raw = current + delta %}
+    {% set resolution = setpoint_resolution_w | float(10) %}
+    {% set rounded = ((raw / resolution) | round(0) * resolution) | float(0) %}
+    {% set m = max_battery_charge_discharge_setpoint | float(0) %}
+    {{ [[rounded, -m] | max, m] | min | round(0) }}
+
+  should_write_next_battery_charge_discharge_setpoint: >
+    {{
+      should_set_new_battery_charge_discharge_setpoint
+      and (next_battery_charge_discharge_setpoint | float(0))
+          != (current_battery_charge_discharge_setpoint | float(0))
+    }}
 
 action:
-  # =========================================================================
-  # 🚨 CRITICAL FAIL-SAFE: Ist der Hauptzähler offline? Sofort auf 0W regeln!
-  # =========================================================================
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "[[ states(main_meter) in ['unavailable', 'unknown'] ]]"
-        sequence:
-          - service: number.set_value
-            target:
-              entity_id: !input combined_power_entity
-            data:
-              value: 0
-          - stop: "Hauptzähler ausgefallen! Not-Aus aktiv."
 
-  # =========================================================================
-  # 🔋 1. HYSTERESE FÜR NETZLADUNG (Schalter EIN/AUS)
-  # =========================================================================
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "[[ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0) >= (cfg_soc_chg_stop | float - 0.1) ]]"
-        sequence:
-          - service: input_boolean.turn_off
-            target:
-              entity_id: !input charge_helper
-      - conditions:
-          - condition: template
-            value_template: "[[ states(bat_soc) not in ['unavailable', 'unknown'] and states(bat_soc) | float(0)  cfg_soc_dischg_start | float ]]"
-        sequence:
-          - service: input_boolean.turn_on
-            target:
-              entity_id: !input discharge_helper
-  # =========================================================================
-  # 📊 3. HAUPTREGELUNG: BERECHNUNG DER LEISTUNGSVORGABE
-  # =========================================================================
-  - choose:
-      # ---------------------------------------------------------------------
-      # FALL A: Netzbezug liegt vor & Entladen ist erlaubt -> Nulleinspeisung Haus (POSITIVER WERT)
-      # ---------------------------------------------------------------------
-      - conditions:
-          - condition: template
-            value_template: "[[ states(dischg_helper) == 'on' ]]"
-          - condition: template
-            value_template: >-
-              {% set hauptzaehler = states(main_meter) | float(0) %}
-              {% set wallbox_status = states(wb_power) %}
-              {% set wallbox = states(wb_power) | float(0) if wallbox_status not in ['unavailable', 'unknown'] and states(wb_power) | float(0) >= (wb_threshold | float) else 0 %}
-              {{ (hauptzaehler - wallbox) > 10 }}
-        sequence:
-          - service: number.set_value
-            target:
-              entity_id: !input combined_power_entity
-            data:
-              value: >-
-                {% set aktueller_regler = states(comb_entity) | float(0) %}
-                {% set hauptzaehler = states(main_meter) | float(0) %}
-                {% set wallbox_status = states(wb_power) %}
-                
-                {# Wallbox-Ausfallschutz auswerten #}
-                [% if wallbox_status in ['unavailable', 'unknown'] %]
-                  [% set limit = max_out_safe | float %]
-                  [% set haus_netzbezug = hauptzaehler %]
-                {% else %}
-                  [% set limit = max_out | float %]
-                  [% set wallbox = states(wb_power) | float(0) if states(wb_power) | float(0) >= (wb_threshold | float) else 0 %]
-                  [% set haus_netzbezug = hauptzaehler - wallbox %}
-                [% endif %]
-                
-                {# WICHTIG: Falls der Regler vorher im negativen Bereich (Laden) war, setzen wir ihn für die Berechnung virtuell auf 0 #}
-                {% set realer_ausgang = aktueller_regler if aktueller_regler > 0 else 0 %}
-                {% set neuer_wert = realer_ausgang + haus_netzbezug %}
-                [[ [neuer_wert, limit] | min | max(0) ]]
+  # -------------------------------------------------
+  # 🚨 Home Assistant fährt herunter
+  # -------------------------------------------------
+  - if:
+      - condition: trigger
+        id: homeassistant_shutdown
+    then:
+      - service: number.set_value
+        continue_on_error: true
+        target:
+          entity_id: "{{ input_battery_charge_discharge_setpoint }}"
+        data:
+          value: 0
 
-      # ---------------------------------------------------------------------
-      # FALL B: Überschuss liegt vor & Laden ist erlaubt -> AC-Netzladung (NEGATIVER WERT)
-      # ---------------------------------------------------------------------
-      - conditions:
-          - condition: template
-            value_template: "[[ states(main_meter) | float(0) -
-                {% set aktueller_regler = states(comb_entity) | float(0) %}
-                {% set ueberschuss = states(main_meter) | float(0) %} {# Ist bereits ein negativer Wert! #}
-                
-                {# WICHTIG: Falls der Regler vorher im positiven Bereich (Entladen) war, setzen wir ihn virtuell auf 0 #}
-                {% set reale_ladung = aktueller_regler if aktueller_regler < 0 else 0 %}
-                {% set neuer_wert = reale_ladung + ueberschuss %}
-                
-                {# Mathematisches Ladelimit berechnen (Aus dem positiven UI-Input ein negatives Limit machen) #}
-                {% set max_lade_limit = (max_chg | float) * -1 %}
-                [[ [neuer_wert, 0] | min | max(max_lade_limit) ]]
+      - stop: "Home Assistant fährt herunter – Batteriesollwert auf 0 gesetzt"
 
-      # ---------------------------------------------------------------------
-      # FALL C: Idealbereich bereits erreicht oder System im Pausenmodus -> Auf 0W setzen
-      # ---------------------------------------------------------------------
-      - conditions:
+  # -------------------------------------------------
+  # 🚨 Hauptzähler ausgefallen
+  # -------------------------------------------------
+  - if:
+      - condition: trigger
+        id: grid_failed
+    then:
+      - service: number.set_value
+        continue_on_error: true
+        target:
+          entity_id: "{{ input_battery_charge_discharge_setpoint }}"
+        data:
+          value: 0
+
+      - stop: "Hauptzähler nicht verfügbar"
+
+  # -------------------------------------------------
+  # 🔄 Hysterese Logik
+  
+  # -------------------------------------------------
+  # 🔓 Entladesperre aktualisieren
+  # -------------------------------------------------
+  - alias: "🔓 Entladesperre aktualisieren"
+    if:
+      - condition: template
+        alias: "SOC hat die Leergrenze erreicht oder unterschritten"
+        value_template: >
+          {{ soc <= soc_empty }}
+
+      - condition: state
+        alias: "Entladesperre ist noch nicht aktiv"
+        entity_id: !input lock_discharge
+        state: "off"
+
+    then:
+      - alias: "Entladesperre einschalten"
+        service: input_boolean.turn_on
+        target:
+          entity_id: !input lock_discharge
+
+    else:
+      - if:
           - condition: template
-            value_template: "true"
-        sequence:
-          - service: number.set_value
+            alias: "SOC hat die Freigabeschwelle wieder erreicht"
+            value_template: >
+              {{ soc >= (soc_empty + soc_empty_release) }}
+
+          - condition: state
+            alias: "Entladesperre ist aktuell aktiv"
+            entity_id: !input lock_discharge
+            state: "on"
+
+        then:
+          - alias: "Entladesperre ausschalten"
+            service: input_boolean.turn_off
             target:
-              entity_id: !input combined_power_entity
+              entity_id: !input lock_discharge
+
+  # -------------------------------------------------
+  # 🔋 Ladesperre aktualisieren
+  # -------------------------------------------------
+  - alias: "🔋 Ladesperre aktualisieren"
+    if:
+      - condition: template
+        alias: "SOC hat die Vollgrenze erreicht oder überschritten"
+        value_template: >
+          {{ soc >= soc_full }}
+
+      - condition: state
+        alias: "Ladesperre ist noch nicht aktiv"
+        entity_id: !input lock_charge
+        state: "off"
+
+    then:
+      - alias: "Ladesperre einschalten"
+        service: input_boolean.turn_on
+        target:
+          entity_id: !input lock_charge
+
+    else:
+      - if:
+          - condition: template
+            alias: "SOC ist unter die Freigabeschwelle gefallen"
+            value_template: >
+              {{ soc <= (soc_full - soc_full_release) }}
+
+          - condition: state
+            alias: "Ladesperre ist aktuell aktiv"
+            entity_id: !input lock_charge
+            state: "on"
+
+        then:
+          - alias: "Ladesperre ausschalten"
+            service: input_boolean.turn_off
+            target:
+              entity_id: !input lock_charge
+
+  # -------------------------------------------------
+  # 🔋 Batteriesollwert setzen
+  # -------------------------------------------------
+  - choose:
+      - alias: "🔋 Neuer Batteriesollwert erforderlich"
+        conditions:
+          - condition: template
+            alias: "Gerundeter nächster Sollwert unterscheidet sich vom aktuellen Sollwert"
+            value_template: >
+              {{ should_write_next_battery_charge_discharge_setpoint }}
+
+          - condition: template
+            alias: "Fehlerabhängiges Schreibintervall ist abgelaufen"
+            value_template: >
+              {{ is_control_interval_elapsed }}
+
+          - condition: template
+            alias: "Hausanschluss-Zähler hat nach der letzten Sollwertänderung aktualisiert"
+            value_template: >
+              {{ has_grid_sample_after_setpoint_change }}
+
+        sequence:
+          - alias: "Batterie-Sollwert gerundet setzen"
+            service: number.set_value
+            target:
+              entity_id: !input battery_charge_discharge_setpoint
             data:
-              value: 0
+              value: "{{ next_battery_charge_discharge_setpoint }}"
+              
